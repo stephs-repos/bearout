@@ -1,7 +1,7 @@
-"""Corpus fidelity verification (extraction in progress).
+"""Corpus fidelity verification: does your corpus match the law, today?
 
-Three-layer verification that a RAG corpus faithfully mirrors its
-authoritative source (first adapter: Ontario's e-Laws JSON API):
+Three layers, per document (see :mod:`substantiate.fidelity.verify` for
+the full contract):
 
 L1 — currency + parser drift: re-fetch the official text, rebuild the
      exact chunk text ingest would store, exact-compare per section.
@@ -12,4 +12,20 @@ L2 — extraction fidelity: re-extract with a second, independent
 L3 — silent drops: an independent section inventory compared BOTH ways
      (sections the official text has but the corpus lacks, and corpus
      sections the official text no longer shows).
+
+First authoritative-source adapter: Ontario's e-Laws JSON API
+(:mod:`substantiate.fidelity.sources.elaws`).
 """
+
+from substantiate.fidelity.spec import DocSpec, apply_section_filter, chunk_text, section_label
+from substantiate.fidelity.verify import FIDELITY_VERDICTS, SectionFinding, verify_doc
+
+__all__ = [
+    "FIDELITY_VERDICTS",
+    "DocSpec",
+    "SectionFinding",
+    "apply_section_filter",
+    "chunk_text",
+    "section_label",
+    "verify_doc",
+]

@@ -18,11 +18,15 @@ honestly.
   doubt, unsupported), and **repair** rather than amputate — the answer is
   recomposed without exactly the failed claims, novel content in the repair
   is re-verified, and a repair that won't verify becomes an abstain.
-- **`substantiate.fidelity`** *(extraction in progress)* — three-layer
-  verification that your corpus faithfully mirrors its authoritative source
-  (currency drift, extraction fidelity, silent drops), with Ontario's e-Laws
-  law API as the first source adapter. Latest live run on our production
-  corpus: **418/418 sections verified across 9 statutes and regulations.**
+- **`substantiate.fidelity`** — three-layer verification that your corpus
+  faithfully mirrors its authoritative source: **L1** currency + parser
+  drift (exact chunk reconstruction), **L2** extraction fidelity (an
+  independent second extractor; L1-pass + L2-fail is the stable-parser-bug
+  signature), **L3** silent drops (both-way section inventory). Ontario's
+  e-Laws law API is the first source adapter; the corpus side is a
+  pluggable reader (Postgres reference adapter included). Latest live run
+  on our production corpus: **418/418 sections verified across 9 statutes
+  and regulations.**
 
 ## Honest numbers
 
@@ -88,8 +92,10 @@ falls back to a *stricter* path, never fail-open.
 
 ## Status
 
-Alpha. Extracted from a production system; the fidelity verifier and the
-verifier-precision harness are being ported next. API may move before 0.1.0.
+Alpha. Extracted from a production system. The gate and the fidelity
+verifier are ported with their test suites; the verifier-precision harness
+(measure your own false-strip/false-pass against a labeled set) is next.
+API may move before 0.1.0.
 
 ## License
 
