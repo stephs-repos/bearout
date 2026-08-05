@@ -1,51 +1,135 @@
 # Substantiate
 
-**Fail-closed grounding for RAG: every sentence verified against its cited
-source, or suppressed. The verifier's own error rates measured and published.**
+**A runtime grounding gate that fails closed — and publishes its own error rates.**
 
-If you do grounded generation, you probably don't know your verifier's error
-rate — and the literature says a strict prompted LLM judge wrongly flags
-roughly half of what it flags (RAGTruth: prompted GPT-4-turbo judge at
-P46.9 / R97.9). Substantiate is the gate architecture extracted from a live
-consumer legal-information product, plus the instruments we used to measure it
-honestly.
+Every sentence of a generated answer is checked against its cited sources. What
+can't be supported doesn't ship. And because a gate whose own accuracy is unknown
+is theatre, the gate's error rates are measured on a sealed, expert-labeled
+fixture and published below.
 
-## What's here
+Two components, extracted from a live consumer legal-information product:
 
-- **`substantiate.gate`** — the claim-level grounding gate:
-  **decompose** an answer into atomic single-fact claims, **verify** each
-  claim independently against the retrieved sources (fail-closed: when in
-  doubt, unsupported), and **repair** rather than amputate — the answer is
-  recomposed without exactly the failed claims, novel content in the repair
-  is re-verified, and a repair that won't verify becomes an abstain.
-- **`substantiate.fidelity`** — three-layer verification that your corpus
-  faithfully mirrors its authoritative source: **L1** currency + parser
-  drift (exact chunk reconstruction), **L2** extraction fidelity (an
-  independent second extractor; L1-pass + L2-fail is the stable-parser-bug
-  signature), **L3** silent drops (both-way section inventory). Ontario's
-  e-Laws law API is the first source adapter; the corpus side is a
-  pluggable reader (Postgres reference adapter included). Latest live run
-  on the product's live corpus: **418/418 sections verified across 9 statutes
-  and regulations.**
+- **The gate** — per-sentence verification, fail-closed, abstain rather than ship
+  a gutted answer.
+- **The corpus verifier** — because grounding against a stale index is worthless.
+  Every stored chunk checked against the authoritative source (Ontario's e-Laws
+  API) for currency drift, extraction fidelity, and silent drops.
 
-## Honest numbers
+---
 
-Measured on a sealed, human-labeled instrument (hash-pinned; the fixture
-never ships — bring your own labeled set, the harness pattern is documented):
+## Measured error rates
 
-| Metric | Value | Meaning |
+Two error types, and they are not symmetric:
+
+- **False pass** — an unsupported claim slips through and reaches the user. The
+  harm-bearing direction.
+- **False strip** — a supported sentence is wrongly removed. Costs completeness,
+  not correctness.
+
+| | Rate | In judge terms |
 |---|---|---|
-| False-strip | **20.5%** | a *correct* sentence needlessly suppressed or repaired (the safe direction) |
-| False-pass | **2.1%** | a fabricated claim that survived verification (the dangerous direction) |
+| **False pass** | **2.4%** | TNR 97.6% |
+| False strip | 20.2% | TPR 79.8% |
 
-That asymmetry is a chosen operating point: in a legal domain, an omitted
-true sentence costs completeness; a passed fabrication costs a homeowner a
-false belief about their rights. The roadmap down from 20.5% is a trained
-detector (the literature's named remedy), shipping as a drop-in verifier
-backend.
+The gap is a deliberate choice, not an accident. In consumer legal information a
+missing sentence is a smaller failure than a wrong one, so the gate is tuned to
+pay a recall tax for a low leak rate. If your domain's asymmetry runs the other
+way, this is the wrong operating point — and now you can see that before adopting
+it, which is the point of publishing.
 
-We will never describe this as "hallucination-free." Mechanism and audit
-trail, always.
+**Fixture card**
+
+| | |
+|---|---|
+| Items | 474 — 153 logged production sentences, 54 constructed-entailed, 267 constructed-perturbed |
+| Perturbations | exactly one factual corruption each: wrong number / wrong section / inverted condition / added qualifier / wrong actor / wrong outcome |
+| Labels | binary (supported / unsupported) |
+| Labelling | logged items: **3 independent blind judges**, no access to live verdicts, majority vote, 2-1 splits flagged (5 of 474). Constructed items: entailment or corruption by construction, plus an independent adversarial verification pass |
+| Sealing | frozen by content hash; any regeneration is a new instrument version |
+| Judge model | Claude Sonnet 4.5, temperature 0 |
+
+**Provenance of the numbers.** The run above was executed against fixture v1 and
+scored **20.5% / 2.1%**. The fixture was later re-audited and two labels corrected
+(both supported → unsupported); re-scoring the same unchanged verdicts against the
+corrected labels gives the **20.2% / 2.4%** headline. Both are shown because the
+difference between them is the audit trail. 23 further contested labels remain
+deferred to expert review — the instrument is good, not perfect, and its residual
+uncertainty is disclosed rather than hidden.
+
+The fixture itself is **not** published. Training or tuning against the exam
+destroys the only measure you have. What is published is the methodology, the
+per-item verdicts, and the numbers.
+
+---
+
+## What was rejected, and why
+
+The obvious improvement to a sentence-level gate is to decompose each sentence
+into atomic claims and verify those — smaller questions, and you can repair the
+answer instead of deleting sentences. It was preregistered with a pass/fail gate
+and an anti-fishing cap of two tuning iterations, then measured:
+
+| Design | False strip | False pass |
+|---|---|---|
+| **sentence-level** (shipped) | **20.5%** | **2.1%** |
+| claim decomposition, iteration 0 | 52.4% | 2.1% |
+| claim decomposition, iteration 1 | 41.1% | 1.7% |
+| MiniCheck-770M alone (off-the-shelf detector, same fixture) | 21.1% | 30.1% |
+
+All rows in this table are scored against **fixture v1 labels**, the version every
+one of these runs was executed against, so the designs are compared on identical
+ground. (The headline above uses the corrected v3 labels; under those, the shipped
+gate is 20.2/2.4 and claim iteration 1 is 41.5/2.4 — the ranking is unchanged.)
+Every rate here is recomputable from
+[`artifacts/`](experiments/claim-decomposition/artifacts/).
+
+It failed, twice, and did not ship. The structural reason generalizes: a sentence
+survives only if *all* its claims do, so the verdict is an AND over claims, and
+decomposition **multiplies** per-call noise unless per-claim accuracy far exceeds
+per-sentence accuracy. Measured, it does not.
+
+The design did cure the specific case that motivated it — and was rejected
+anyway, because one convincing example is not an eval.
+
+Code, preregistration, and per-item run artifacts:
+[`experiments/claim-decomposition/`](experiments/claim-decomposition/).
+
+The last row deserves its own note: an off-the-shelf trained detector had
+comparable false-strip on this domain and missed **30% of fabrications**. Domain
+fixtures exist for a reason.
+
+---
+
+## Where this sits
+
+Comparison is against each product's **documented** behaviour; corrections
+welcome via an issue.
+
+| | Runtime gate | Per-sentence | Fail-closed by default | Publishes its own error rates | Verifies the corpus |
+|---|---|---|---|---|---|
+| **substantiate** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Vertex Check Grounding | returns scores | ✅ | ❌ your policy | ❌ | ❌ |
+| Azure groundedness + correction | ✅ | ✅ | ❌ configurable | ❌ | ❌ |
+| Bedrock contextual grounding | ✅ | response-level threshold | ⚠️ threshold you set | ❌ | ❌ |
+| Vectara HHEM / Corrector | ✅ | ✅ | ❌ score + correct | ❌ | ❌ |
+| Guardrails `provenance_llm` | ✅ | ✅ | ❌ configurable | ❌ | ❌ |
+| RAGAS / DeepEval | ❌ offline eval | ✅ | n/a | ❌ | ❌ |
+| LettuceDetect / MiniCheck / Lynx | detector models, not gates | ✅ | n/a | ✅ on public benchmarks | ❌ |
+
+**Substantiate is not another eval library.** RAGAS and DeepEval score answers
+after the fact; this decides what ships. And per-sentence checking is not the
+novel part — several products above do it. What is uncommon: shipping fail-closed
+as the *default* rather than handing you a score, and publishing the checker's own
+confusion matrix. What appears to be uncontested: nobody verifies the corpus
+itself against its authoritative source.
+
+**The judge is swappable.** It's a single `chat()` protocol
+([`llm.py`](src/substantiate/llm.py)), so a trained detector — LettuceDetect,
+MiniCheck, Lynx, or your own — can be the backend. The numbers above are for a
+prompted judge; substituting a detector is a different operating point that you
+should re-measure on your own fixture.
+
+---
 
 ## Quickstart
 
@@ -56,47 +140,66 @@ export ANTHROPIC_API_KEY=...
 
 ```python
 import asyncio
-from substantiate import validate_with_claims
+from substantiate import validate_grounding
 from substantiate.adapters.anthropic import AnthropicChat
 
-llm = AnthropicChat()
-
 outcome = asyncio.run(
-    validate_with_claims(
-        answer="You have 30 days to appeal. The deposit limit is $100,000.",
-        sentences=["You have 30 days to appeal.", "The deposit limit is $100,000."],
+    validate_grounding(
+        answer="You must report the defect under Reg. 892 s. 4.4(2). "
+        "Tarion will then pay you $100,000.",
         sources_block="<your retrieved sources here>",
-        llm=llm,
+        llm=AnthropicChat(),
     )
 )
 
-print(outcome.grounded, outcome.repaired)
-print(outcome.answer)  # the surviving (possibly repaired) answer
-print(outcome.removed_claims)  # exactly what was suppressed, and why it's gone
+print(outcome.grounded)  # False if too little survived — abstain, don't ship
+print(outcome.answer)  # surviving text ("" when not grounded)
+print(outcome.removed)  # exactly what was suppressed
+print(outcome.verdicts)  # (sentence, supported) for all of them — the audit trail
 ```
 
-`validate_with_claims` returns `None` when decomposition fails — the caller
-falls back to a *stricter* path, never fail-open.
+Sentence splitting is citation-aware, which is load-bearing rather than cosmetic:
+naive splitting shatters `Reg. 892 s. 4.4(2)` into fragments like `892 s.`, which
+any honest judge then rejects — so a well-sourced answer over-abstains. One
+observed case lost 18 of 25 "sentences" that way.
+
+## Corpus fidelity
+
+A grounding gate is only as good as the corpus it grounds against. Three layers,
+per document:
+
+- **L1 — currency and parser drift.** Re-fetch the official text, rebuild the
+  exact chunk ingest would store, compare per section.
+- **L2 — extraction fidelity.** Re-extract with a second, independent mechanism;
+  every stored body must appear as a contiguous substring of it. L1 pass + L2
+  fail is the signature of a parser bug that survived ingest.
+- **L3 — silent drops.** Independent section inventory, compared both ways.
+
+Ontario's e-Laws API is the first source adapter; the corpus side is a pluggable
+reader (Postgres reference adapter included). Latest live run against the
+product's corpus: **418/418 sections verified across 9 statutes and regulations.**
 
 ## Design principles
 
-1. **Fail closed.** A claim is supported only if directly stated or entailed
-   by the sources. Verifier errors and API failures count as unsupported.
-2. **Repair, never amputate.** Sentence-level deletion mutilates
-   enumerations ("The second is…" with no first). Recomposition without the
-   failed claims keeps answers coherent; a repair that smuggles new
-   unverified content is rejected.
-3. **Measure the instrument.** A gate whose own error rate is unknown is
-   theater. Publish false-strip and false-pass, keep the labeled fixture
-   sealed (training or prompt-tuning on the exam destroys the measure).
+1. **Fail closed.** Supported means directly stated or entailed. Judge errors,
+   API failures, and unparseable verdicts all count as unsupported.
+2. **Abstain over mutilate.** Below the keep-ratio the answer is withheld
+   entirely. A half-answer that has lost its qualifiers is worse than no answer.
+3. **Measure the instrument.** Publish the confusion matrix, seal the fixture,
+   preregister changes, cap the tuning iterations.
+
+We will never describe this as "hallucination-free." Mechanism and audit trail,
+always.
 
 ## Status
 
-Alpha. Extracted from a live product. The gate and the fidelity
-verifier are ported with their test suites; the verifier-precision harness
-(measure your own false-strip/false-pass against a labeled set) is next.
-API may move before 0.1.0.
+Alpha, extracted from a live product. The gate and corpus verifier ship with
+their test suites. Next: a public-benchmark row (RAGTruth / LLM-AggreFact) so the
+numbers can be compared on shared ground, and a harness for measuring a judge
+against *your* labeled set.
 
 ## License
 
-Apache-2.0
+Apache-2.0. The e-Laws fixture under `tests/fixtures/` is Ontario legislation,
+© King's Printer for Ontario, reproduced as test data and not covered by that
+license.

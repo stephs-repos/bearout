@@ -1,301 +1,233 @@
-"""Claim-level grounding gate: decompose → verify → repair, fail-closed.
+"""Sentence-level grounding gate: verify → strip → abstain, fail-closed.
 
-The naive way to validate a generated answer is one composite question
-per sentence ("is this whole sentence stated or entailed in 4,000 words
-of sources?") under a fail-closed prompt, amputating whatever fails.
-Measured on a sealed, human-labeled instrument, that design false-strips
-20.5% of *correct* sentences — the documented operating point of strict
-prompted LLM judges (RAGTruth's prompted GPT-4-turbo judge: P46.9/R97.9).
-The lead exhibit: it deleted "[fixture sentence redacted: sealed instrument]…"
-while holding a source chunk that says "[source excerpt redacted: sealed instrument]
-layers… [redacted] the plan."
+Every sentence of a generated answer is checked against the retrieved
+sources by a strict judge.  Unsupported sentences are removed.  If too
+little of the answer survives, the whole answer is withheld rather than
+shipped gutted.
 
-This module splits that one hard question into several easy ones:
+**This is the code the published error rates describe.**  See the
+"Measured error rates" section of the README: on a sealed 474-item
+expert-labeled fixture, this gate false-strips ~20% of supported
+sentences and false-passes ~2% of unsupported ones.  The prompt below is
+the exact string under measurement — changing a word changes the
+operating point and invalidates the numbers.
 
-1. DECOMPOSE the answer into atomic single-fact claims (one call).
-2. VERIFY each claim independently against the same sources — the same
-   fail-closed strictness, but the unit is one fact with one anchor, so a
-   wrinkle in one clause can no longer sink its neighbours.
-3. REPAIR, never amputate: when claims fail, the answer is recomposed
-   without exactly those claims (novel content in the repair is
-   re-verified; a repair that won't verify becomes an abstain).  The
-   mutilated-enumeration outcome ("The second is…" with no first) is
-   impossible by construction.
+Fail-closed everywhere: a judge error, an API failure, or an
+unparseable verdict all count as UNSUPPORTED.  The only way a sentence
+ships is an affirmative SUPPORTED.
 
-Decompose/parse failures return ``None`` so the caller can fall back to
-a stricter path (e.g. per-sentence verification) — degraded means
-stricter here, never fail-open.
-
-The prompts below are the EXACT prompts under measurement — changing a
-word changes the operating point.  A first-iteration decomposer DOUBLED
-false-strips (52.4%) by manufacturing kill opportunities: separate
-provenance meta-claims for inline citations, bolder absolutes than the
-sentence asserts, and near-duplicate claims.  This revision keeps
-citations attached to their fact, forbids strengthening, and the caller
-dedupes.
+An alternative design — decomposing each sentence into atomic claims and
+verifying those — was preregistered, measured, and **rejected**: it
+roughly doubled the false-strip rate.  The code, the preregistration,
+and the run artifacts are in ``experiments/claim-decomposition/``.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 from substantiate.llm import ChatLLM
 
 logger = logging.getLogger(__name__)
 
-# Bounded fan-out for per-claim verification calls.
-CLAIM_VERIFY_CONCURRENCY = 5
-# Abstain when fewer than this fraction of claims verify.
-MIN_CLAIM_KEEP_RATIO = 0.5
+# Abstain when fewer than this fraction of sentences survive, rather than
+# shipping a gutted answer.
+MIN_KEEP_RATIO = 0.5
 
-CLAIM_DECOMPOSER_SYSTEM_PROMPT = """You restate an assistant's answer as atomic factual claims for verification.
+# The exact prompt under measurement.  Do not reword: the published
+# false-strip / false-pass rates are properties of this string.
+GROUNDING_VERIFIER_SYSTEM_PROMPT = """You are a strict groundedness checker for a consumer legal-information tool. You are given SOURCES and one SENTENCE an assistant wrote.
 
-You are given the answer as numbered sentences. For EACH sentence, list the factual claims it asserts, as short self-contained statements:
-- One fact per claim. Split conjunctions, but keep a number, date, or qualifier WITH the fact it qualifies.
-- USE THE SENTENCE'S OWN WORDS as much as possible. Never strengthen a claim: no absolutes, generalizations, or implications the sentence does not literally assert.
-- Keep a citation or attribution WITH the fact it supports, inside the same claim ("you have 30 days to appeal (Reg. 892 s. 2.1(1))" stays ONE claim). NEVER emit a separate claim about where information is stated or found.
-- Keep hedges and attributions ("according to Tarion's materials") inside the claim.
-- Resolve pronouns so each claim stands alone ("it" -> "the two-year warranty").
-- Do not emit two claims that say the same thing.
-- A statement about what the sources do or do not say ("the sources do not specify a deadline") is itself a claim — keep it.
-- A sentence with no factual content (greetings, transitions) gets an empty list.
+A sentence is SUPPORTED only if EVERY factual claim, number, date, qualifier, and condition in it is directly stated in, or directly entailed by, the SOURCES. Rewording and paraphrase are fine — but the assistant must not ADD anything the sources do not contain.
 
-Reply with ONLY a JSON object mapping sentence numbers to claim lists, for example:
-{"1": ["first claim", "second claim"], "2": []}"""
-
-CLAIM_VERIFIER_SYSTEM_PROMPT = """You are a strict groundedness checker for a consumer legal-information tool. You are given SOURCES and one CLAIM.
-
-The claim is SUPPORTED only if it is directly stated in, or directly entailed by, the SOURCES. Rewording and paraphrase are fine — but the claim must not add or change anything: a number, dollar amount, date, duration, qualifier, condition, actor, or outcome the sources do not give. A claim that the sources do NOT state something is SUPPORTED only if that absence actually holds across all the SOURCES. Judge only against the SOURCES. When in doubt, answer UNSUPPORTED.
+Answer UNSUPPORTED if the sentence adds any detail not in the sources — for example a timing qualifier ("at any time", "immediately", "within 30 days"), a number, a guarantee, a cause, or a recommendation the sources do not make. When in doubt, answer UNSUPPORTED.
 
 Reply with exactly one word: SUPPORTED or UNSUPPORTED."""
 
-RECOMPOSER_SYSTEM_PROMPT = """You repair an assistant's answer after fact-checking. You are given the ANSWER and a list of UNSUPPORTED CLAIMS that failed verification against the sources.
 
-Rewrite the answer so it no longer asserts any of the unsupported claims, and change nothing else:
-- Keep every other fact, citation, and qualifier exactly as asserted.
-- Keep the original tone; repair transitions and enumerations so the result reads as a complete, coherent answer (never a list missing its first item).
-- Do not add any new facts.
-- If removing the claims would leave no substantive answer, reply with exactly NOANSWER.
+# ---------------------------------------------------------------------------
+# Sentence splitting
+#
+# Naive splitting on [.!?] is not merely imprecise here — it is a direct
+# cause of false strips.  Two failure modes, both observed in production:
+#
+#   1. Statutory citations shatter.  "Reg. 892 s. 4.4(2)" becomes fragments
+#      like "892 s.", which the judge then correctly rejects as unsupported
+#      — so a well-retrieved, citation-heavy answer over-abstains.  One
+#      measured case stripped 18 of 25 "sentences" this way.
+#   2. Terminal punctuation inside a parenthetical citation.  A document
+#      title carried into parentheses — "(Tarion's 'Problem with your
+#      appliances? Who you gonna call?' page)" — splits mid-citation.
+#
+# Hence: an abbreviation blocklist, a single-letter-abbreviation guard
+# (s. c. v. O.), and paren-depth tracking that suppresses any boundary
+# while inside an open '('.
+# ---------------------------------------------------------------------------
 
-Reply with ONLY the rewritten answer (plain text) or NOANSWER."""
+_NO_SPLIT_ABBREVS = (
+    "Reg",
+    "reg",
+    "No",
+    "ss",
+    "Ss",
+    "Art",
+    "art",
+    "Cl",
+    "cl",
+    "Para",
+    "para",
+    "Sched",
+    "subs",
+    "Subs",
+    "vs",
+    "Inc",
+    "Ltd",
+    "approx",
+    "Approx",
+    "pp",
+)
+
+_SENTENCE_SPLIT_RE = re.compile(
+    r"(?<=[.!?])"  # keep the terminator with the sentence (don't consume it)
+    r"(?<!\b[A-Za-z]\.)"  # not after a single-letter abbreviation (s. c. v. O.)
+    + "".join(rf"(?<!{re.escape(_a)}\.)" for _a in _NO_SPLIT_ABBREVS)  # Reg. No. art. ...
+    + r"\s+(?=[\"“'(A-Z])"  # only at a real boundary (next char starts a sentence)
+)
 
 
-@dataclass(frozen=True)
-class ClaimVerdict:
-    sentence_index: int  # 1-based index into the sentences given to decompose
-    claim: str
-    supported: bool
+def split_sentences(text: str) -> list[str]:
+    """Split ``text`` into sentences, never breaking inside a citation.
+
+    Boundaries falling inside an open parenthetical are suppressed by
+    tracking paren depth; abbreviations and single-letter forms are
+    protected by the split regex.  See the module comment for why this
+    matters to the measured error rates.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    out: list[str] = []
+    start = 0
+    scanned = 0
+    depth = 0
+    for m in _SENTENCE_SPLIT_RE.finditer(text):
+        boundary = m.start()
+        depth += text.count("(", scanned, boundary) - text.count(")", scanned, boundary)
+        scanned = boundary
+        if depth <= 0:
+            depth = 0  # clamp: a stray ')' must not make later boundaries "inside"
+            segment = text[start:boundary].strip()
+            if segment:
+                out.append(segment)
+            start = m.end()
+    tail = text[start:].strip()
+    if tail:
+        out.append(tail)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The gate
+# ---------------------------------------------------------------------------
 
 
 @dataclass
 class GateOutcome:
-    answer: str  # final answer ("" when grounded is False)
+    """What the gate decided.
+
+    ``answer`` is the surviving text, or ``""`` when ``grounded`` is False
+    (the caller must abstain — never ship the original in that case).
+    ``removed`` and ``verdicts`` exist so a suppression is always
+    explainable after the fact.
+    """
+
+    answer: str
     grounded: bool
-    removed_claims: list[str] = field(default_factory=list)
-    claim_verdicts: list[ClaimVerdict] = field(default_factory=list)
-    # Derived per-sentence verdicts (sentence supported iff all its claims
-    # are) — a stable diagnostics shape regardless of claim fan-out.
-    sentence_verdicts: list[tuple[str, bool]] = field(default_factory=list)
-    repaired: bool = False
+    removed: list[str] = field(default_factory=list)
+    verdicts: list[tuple[str, bool]] = field(default_factory=list)
 
 
-async def _decompose(sentences: list[str], llm: ChatLLM) -> dict[int, list[str]] | None:
-    """Sentence-number -> atomic claims.  ``None`` on any failure (caller
-    falls back to a stricter path — never silently fail-open)."""
-    numbered = "\n".join(f"{i}. {s}" for i, s in enumerate(sentences, start=1))
-    try:
-        result = await llm.chat(
-            system_prompt=CLAIM_DECOMPOSER_SYSTEM_PROMPT,
-            user_message=f"ANSWER SENTENCES:\n{numbered}",
-            temperature=0.0,
-        )
-        raw = (result.get("content") or "").strip()
-        if raw.startswith("```"):
-            raw = raw.strip("`")
-            raw = raw[raw.index("{") :] if "{" in raw else raw
-        parsed = json.loads(raw[raw.index("{") : raw.rindex("}") + 1])
-        mapping: dict[int, list[str]] = {}
-        for key, value in parsed.items():
-            idx = int(key)
-            if not 1 <= idx <= len(sentences) or not isinstance(value, list):
-                raise ValueError(f"bad decomposition entry: {key!r}")
-            mapping[idx] = [str(c).strip() for c in value if str(c).strip()]
-        return {i: mapping.get(i, []) for i in range(1, len(sentences) + 1)}
-    except Exception as exc:  # noqa: BLE001 — signal fallback, never fail open
-        logger.warning("substantiate: decompose failed (%s); signalling fallback", exc)
-        return None
+async def verify_sentence(sentence: str, sources_block: str, verifier: ChatLLM) -> bool:
+    """True if the sentence is grounded in the sources.  Fails CLOSED.
 
-
-async def _verify_claim(claim: str, sources_block: str, verifier: ChatLLM) -> bool:
-    """One atomic claim against the sources.  Fails CLOSED."""
+    The sources ride in ``cache_prefix``: they are identical across every
+    sentence of an answer, so an adapter that supports prompt caching pays
+    for them once instead of once per sentence.
+    """
     try:
         result = await verifier.chat(
-            system_prompt=CLAIM_VERIFIER_SYSTEM_PROMPT,
-            user_message=f"CLAIM:\n{claim}",
+            system_prompt=GROUNDING_VERIFIER_SYSTEM_PROMPT,
+            user_message=f"SENTENCE:\n{sentence}",
             cache_prefix=f"SOURCES:\n{sources_block}\n\n",
             temperature=0.0,
         )
-    except Exception as exc:  # noqa: BLE001 — fail closed
-        logger.warning("substantiate: verifier failed (%s); claim unsupported", exc)
+    except Exception as exc:  # noqa: BLE001 — fail closed: unverifiable == unsupported
+        logger.warning("substantiate: verifier failed (%s); treating sentence as unsupported", exc)
         return False
     return (result.get("content") or "").strip().upper().startswith("SUPPORTED")
 
 
-async def _verify_claims(
-    claims: list[tuple[int, str]], sources_block: str, verifier: ChatLLM
-) -> list[ClaimVerdict]:
-    sem = asyncio.Semaphore(CLAIM_VERIFY_CONCURRENCY)
-
-    async def _one(idx: int, claim: str) -> ClaimVerdict:
-        async with sem:
-            supported = await _verify_claim(claim, sources_block, verifier)
-        return ClaimVerdict(sentence_index=idx, claim=claim, supported=supported)
-
-    return list(await asyncio.gather(*(_one(i, c) for i, c in claims)))
-
-
-async def _recompose(answer: str, failed: list[str], llm: ChatLLM) -> str | None:
-    failed_block = "\n".join(f"- {c}" for c in failed)
-    try:
-        result = await llm.chat(
-            system_prompt=RECOMPOSER_SYSTEM_PROMPT,
-            user_message=f"ANSWER:\n{answer}\n\nUNSUPPORTED CLAIMS:\n{failed_block}",
-            temperature=0.0,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("substantiate: recompose failed (%s)", exc)
-        return None
-    text = (result.get("content") or "").strip()
-    if not text or text.upper().startswith("NOANSWER"):
-        return None
-    return text
-
-
-def _derive_sentence_verdicts(
-    sentences: list[str], verdicts: list[ClaimVerdict]
-) -> list[tuple[str, bool]]:
-    failed_idx = {v.sentence_index for v in verdicts if not v.supported}
-    return [(s, (i not in failed_idx)) for i, s in enumerate(sentences, start=1)]
-
-
-def _normalize(claim: str) -> str:
-    return " ".join(claim.lower().split())
-
-
-def _dedupe_claims(claims: list[tuple[int, str]]) -> list[tuple[int, str]]:
-    """Drop normalized duplicates — each duplicate re-rolls the verifier's
-    dice on identical content (observed: the same claim emitted twice got
-    one SUPPORTED and one UNSUPPORTED, killing its sentence)."""
-    seen: set[str] = set()
-    out: list[tuple[int, str]] = []
-    for idx, claim in claims:
-        key = _normalize(claim)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append((idx, claim))
-    return out
-
-
-async def validate_with_claims(
+async def validate_grounding(
     answer: str,
-    sentences: list[str],
     sources_block: str,
     *,
     llm: ChatLLM,
-    min_claim_keep_ratio: float = MIN_CLAIM_KEEP_RATIO,
-) -> GateOutcome | None:
-    """Full decompose -> verify -> repair pass.  ``None`` = caller must
-    fall back to its own stricter path (decomposition unavailable)."""
-    mapping = await _decompose(sentences, llm)
-    if mapping is None:
-        return None
+    min_keep_ratio: float = MIN_KEEP_RATIO,
+    concurrency: int = 1,
+) -> GateOutcome:
+    """Verify each sentence of ``answer`` against ``sources_block``.
 
-    claims = _dedupe_claims([(idx, c) for idx, lst in sorted(mapping.items()) for c in lst])
-    if not claims:
-        # Nothing factual asserted — nothing to be unsupported.
-        return GateOutcome(
-            answer=answer.strip(),
-            grounded=True,
-            sentence_verdicts=[(s, True) for s in sentences],
+    Unsupported sentences are dropped.  If the surviving fraction falls
+    below ``min_keep_ratio`` the answer is withheld entirely
+    (``grounded=False``, ``answer=""``) — a half-answer that has lost its
+    qualifiers is more dangerous than no answer.
+
+    ``concurrency`` defaults to 1 (sequential), which is how the published
+    rates were measured.  Sentences are judged independently and share no
+    state, so raising it changes latency and cost, not verdicts.
+    """
+    sentences = split_sentences(answer)
+    if not sentences:
+        return GateOutcome(answer.strip(), True)
+
+    if concurrency > 1:
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _one(s: str) -> bool:
+            async with sem:
+                return await verify_sentence(s, sources_block, llm)
+
+        supported_flags = list(await asyncio.gather(*(_one(s) for s in sentences)))
+    else:
+        supported_flags = [await verify_sentence(s, sources_block, llm) for s in sentences]
+
+    verdicts = list(zip(sentences, supported_flags, strict=True))
+    kept = [s for s, ok in verdicts if ok]
+    removed = [s for s, ok in verdicts if not ok]
+
+    grounded = bool(kept) and (len(kept) / len(sentences)) >= min_keep_ratio
+    if removed:
+        logger.info(
+            "substantiate: removed %d/%d sentence(s) as unsupported",
+            len(removed),
+            len(sentences),
         )
-
-    verdicts = await _verify_claims(claims, sources_block, llm)
-    failed = [v for v in verdicts if not v.supported]
-    sentence_verdicts = _derive_sentence_verdicts(sentences, verdicts)
-    outcome = GateOutcome(
-        answer=answer.strip(),
-        grounded=True,
-        removed_claims=[v.claim for v in failed],
-        claim_verdicts=verdicts,
-        sentence_verdicts=sentence_verdicts,
+    return GateOutcome(
+        answer=" ".join(kept).strip() if grounded else "",
+        grounded=grounded,
+        removed=removed,
+        verdicts=verdicts,
     )
-    if not failed:
-        return outcome
-
-    keep_ratio = 1.0 - (len(failed) / len(verdicts))
-    if keep_ratio < min_claim_keep_ratio:
-        outcome.answer, outcome.grounded = "", False
-        return outcome
-
-    repaired = await _recompose(answer, [v.claim for v in failed], llm)
-    if repaired is None:
-        outcome.answer, outcome.grounded = "", False
-        return outcome
-
-    # Re-verify only NOVEL claims the repair introduced — previously-verified
-    # claims are not re-rolled (each re-roll is another chance for a random
-    # false strike), but a repair that smuggles new content must not ship.
-    supported_set = {_normalize(v.claim) for v in verdicts if v.supported}
-    repaired_mapping = await _decompose([repaired], llm)
-    if repaired_mapping is None:
-        outcome.answer, outcome.grounded = "", False
-        return outcome
-    novel = [(1, c) for c in repaired_mapping.get(1, []) if _normalize(c) not in supported_set]
-    if novel:
-        novel_verdicts = await _verify_claims(novel, sources_block, llm)
-        if any(not v.supported for v in novel_verdicts):
-            logger.warning(
-                "substantiate: repair introduced %d unverifiable claim(s); abstaining",
-                sum(not v.supported for v in novel_verdicts),
-            )
-            outcome.answer, outcome.grounded = "", False
-            return outcome
-
-    outcome.answer, outcome.repaired = repaired, True
-    logger.info(
-        "substantiate: repaired answer (removed %d/%d claims)",
-        len(failed),
-        len(verdicts),
-    )
-    return outcome
-
-
-async def sentence_supported_via_claims(
-    sentence: str, sources_block: str, llm: ChatLLM
-) -> bool | None:
-    """Sentence-level verdict through the claim pipeline (a sentence is
-    supported iff all its claims are).  ``None`` = decomposition failed;
-    a measurement harness should fall back exactly like production."""
-    mapping = await _decompose([sentence], llm)
-    if mapping is None:
-        return None
-    claims = _dedupe_claims([(1, c) for c in mapping.get(1, [])])
-    if not claims:
-        return True
-    verdicts = await _verify_claims(claims, sources_block, llm)
-    return all(v.supported for v in verdicts)
 
 
 __all__ = [
-    "CLAIM_DECOMPOSER_SYSTEM_PROMPT",
-    "CLAIM_VERIFIER_SYSTEM_PROMPT",
-    "RECOMPOSER_SYSTEM_PROMPT",
-    "ClaimVerdict",
+    "GROUNDING_VERIFIER_SYSTEM_PROMPT",
+    "MIN_KEEP_RATIO",
     "GateOutcome",
-    "sentence_supported_via_claims",
-    "validate_with_claims",
+    "split_sentences",
+    "validate_grounding",
+    "verify_sentence",
 ]
