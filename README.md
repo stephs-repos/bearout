@@ -1,10 +1,10 @@
-# Bearout
+# bearout
 
 [![CI](https://github.com/stephs-repos/bearout/actions/workflows/ci.yml/badge.svg)](https://github.com/stephs-repos/bearout/actions/workflows/ci.yml)
 
 **A runtime grounding gate that fails closed and publishes its own error rates.**
 
-Bearout is an open-source demonstration of the anti-confabulation mechanisms
+bearout is an open-source demonstration of the anti-confabulation mechanisms
 built for a past project, a consumer legal-information prototype. Every sentence
 of a generated answer is checked against its cited sources, and what can't be
 supported doesn't ship. Because a gate whose own accuracy is unknown is theatre,
@@ -120,7 +120,7 @@ welcome via an issue.
 
 | | Runtime gate | Per-sentence | Fail-closed by default | Publishes its own error rates | Verifies the corpus |
 |---|---|---|---|---|---|
-| **Bearout** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **bearout** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Vertex Check Grounding | returns scores | ✅ | ❌ your policy | ❌ | ❌ |
 | Azure groundedness + correction | ✅ | ✅ | ❌ configurable | ❌ | ❌ |
 | Bedrock contextual grounding | ✅ | response-level threshold | ⚠️ threshold you set | ❌ | ❌ |
@@ -129,7 +129,7 @@ welcome via an issue.
 | RAGAS / DeepEval | ❌ offline eval | ✅ | n/a | ❌ | ❌ |
 | LettuceDetect / MiniCheck / Lynx | detector models, not gates | ✅ | n/a | ✅ on public benchmarks | ❌ |
 
-**Bearout is not another eval library.** RAGAS and DeepEval score answers
+**bearout is not another eval library.** RAGAS and DeepEval score answers
 after the fact; this decides what ships. Per-sentence checking is not the novel
 part either, since several products above do it. What is uncommon is shipping
 fail-closed as the *default* rather than handing you a score, and publishing the
