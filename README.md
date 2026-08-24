@@ -115,27 +115,66 @@ is why domain fixtures exist.
 
 ## Where this sits
 
-Comparison is against each product's **documented** behaviour; corrections
-welcome via an issue.
+Comparison is against each product's **documented** behaviour, checked against
+vendor documentation in August 2026. These products move quickly and several of
+the rows below were wrong in the vendors' favour until that check; corrections
+are welcome via an issue.
 
-| | Runtime gate | Per-sentence | Fail-closed by default | Publishes its own error rates | Verifies the corpus |
+"Directional error rates" means a published false-positive / false-negative
+split for the vendor's own checker. An aggregate F1, accuracy, or balanced
+accuracy does not answer "how often does this thing strip something true?", so
+it is scored separately below.
+
+| | Runtime gate | Per-sentence | Fail-closed by default | Directional error rates | Verifies the corpus |
 |---|---|---|---|---|---|
 | **bearout** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Vertex Check Grounding | returns scores | ✅ | ❌ your policy | ❌ | ❌ |
-| Azure groundedness + correction | ✅ | ✅ | ❌ configurable | ❌ | ❌ |
-| Bedrock contextual grounding | ✅ | response-level threshold | ⚠️ threshold you set | ❌ | ❌ |
-| Vectara HHEM / Corrector | ✅ | ✅ | ❌ score + correct | ❌ | ❌ |
-| Guardrails `provenance_llm` | ✅ | ✅ | ❌ configurable | ❌ | ❌ |
-| RAGAS / DeepEval | ❌ offline eval | ✅ | n/a | ❌ | ❌ |
-| LettuceDetect / MiniCheck / Lynx | detector models, not gates | ✅ | n/a | ✅ on public benchmarks | ❌ |
+| Vertex Check Grounding | ❌ returns scores | ✅ per claim | ❌ | ❌ | ❌ |
+| Azure groundedness detection | ❌ annotates only | ✅ spans | ❌ off by default | ❌ | ❌ |
+| Bedrock contextual grounding | ✅ blocks | ❌ one score per response | ⚠️ threshold required, no default | ❌ | ❌ |
+| Vectara HHEM / factual consistency | ❌ inline score | ❌ one score per response | ❌ | ✅ precision + recall | ❌ |
+| Vectara Hallucination Corrector | ❌ returns a rewrite | ✅ per statement | ❌ | ❌ | ❌ |
+| Guardrails `provenance_llm` | ✅ | ✅ | ✅ raises by default | ❌ | ❌ |
+| RAGAS | ❌ offline eval | ✅ per claim | n/a | ⚠️ one-off, 2023 | ❌ |
+| DeepEval | ❌ offline eval | ✅ per claim | n/a | ❌ | ❌ |
+| LettuceDetect | ❌ scorer | ✅ token spans | n/a | ❌ F1 only | ❌ |
+| MiniCheck | ❌ scorer | ✅ per claim, you pre-split | n/a | ❌ balanced accuracy only | ❌ |
+| Lynx | ❌ scorer | ❌ one verdict per response | n/a | ❌ accuracy only | ❌ |
 
-**bearout is not another eval library.** RAGAS and DeepEval score answers
-after the fact; this decides what ships. Per-sentence checking is not the novel
-part either, since several products above do it. What is uncommon is shipping
-fail-closed as the *default* rather than handing you a score, and publishing the
-checker's own confusion matrix. What appears to be uncontested is verifying the
-corpus itself against its authoritative source, which none of the products above
-do.
+Notes, because several of these rows are easy to misread:
+
+- **Bedrock** also ships Automated Reasoning checks, which are per-claim with
+  explanations, but they are detect-only and validate against extracted policy
+  rules rather than retrieved passages.
+- **Azure** groundedness is off by default, has no documented block mode even
+  inside the Azure OpenAI filter pipeline, and the filter layer fails **open** on
+  its own error (HTTP 200 with `content_filter_error`).
+- **Vertex** has a sibling Answer API that can withhold via
+  `groundingSpec.filteringLevel`, but it is opt-in, whole-answer, and its
+  threshold is an untunable `LOW`/`HIGH`.
+- **Guardrails** defaults to `on_fail=exception` since 0.6.0, so it genuinely
+  fails closed — but all-or-nothing: one unsupported sentence raises and the
+  whole response is lost, where this gate strips the sentence and abstains only
+  below the keep-ratio.
+- **DeepEval's** sibling package `deepteam` ships request-path guards, including
+  a hallucination guard. It returns a verdict for your code to act on, and that
+  guard takes no source context, so it is not a grounding gate.
+- **Retrieval-quality metrics are not corpus verification.** RAGAS and DeepEval
+  context precision/recall compare chunks to a ground-truth answer, not a chunk
+  to the source document it was extracted from.
+
+**bearout is not another eval library.** RAGAS and DeepEval score answers after
+the fact; this decides what ships. Two of the distinctions that motivated this
+project turned out to be weaker than assumed, and both are corrected above:
+per-sentence checking is common, and fail-closed-by-default is not unique
+either, since Guardrails raises by default. What survives is narrower. Most
+products in this space hand back a score and leave the policy to you; of those
+that do decide, none publishes how often its own decision is wrong in each
+direction — Vectara publishes precision and recall for HHEM, which is more than
+anyone else, and the detector models publish aggregate benchmark scores, but a
+false-strip and false-pass pair measured on the shipping configuration is not
+something this list contains. The genuinely uncontested column is the last one:
+nothing here verifies that the corpus it grounds against still matches the
+authoritative source.
 
 **The judge is swappable.** It's a single `chat()` protocol
 ([`llm.py`](https://github.com/stephs-repos/bearout/blob/main/src/bearout/llm.py)), so a trained detector such as

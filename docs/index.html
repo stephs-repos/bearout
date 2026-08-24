@@ -853,12 +853,16 @@
     <div class="flow">
       <h2>Boundaries and caveats</h2>
       <p>
-        <strong>Per-sentence checking is not novel.</strong> Several commercial products
-        do something similar, and at least one open-source library does as well. What is
-        less common is refusing by default rather than returning a score and leaving the
-        policy to the caller, and publishing the checker&rsquo;s own error rates
-        alongside it. The part that appears to be uncontested is verifying the library
-        against its authoritative source.
+        <strong>Neither the checking nor the refusing is novel.</strong> Several
+        commercial products check grounding sentence by sentence, and at least one
+        open-source library refuses by default rather than handing back a score, which
+        is what this gate does. The narrower claim that survives a look at what those
+        products actually document is about the numbers: several publish a benchmark
+        score for their checker, and one publishes precision and recall, but a
+        false-strip and false-pass pair measured on the configuration the product
+        actually ships is not something the field currently offers. The part that
+        appears to be uncontested is verifying the library against its authoritative
+        source.
       </p>
       <p>
         <strong>The numbers describe one domain and one judge.</strong> They were
