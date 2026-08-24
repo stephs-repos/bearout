@@ -22,24 +22,39 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
 # The core package is stdlib-only by design; everything else is an extra.
 dependencies = []
 
 [project.optional-dependencies]
-anthropic = ["anthropic>=0.40"]
+# The measured judge was run at temperature 0, and the 1.x SDK no longer
+# accepts that parameter; stay on 0.x so the default run reproduces the
+# published configuration.
+anthropic = ["anthropic>=0.40,<1.0"]
 fetchers = ["httpx>=0.27"]
 pgvector = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8", "httpx>=0.27"]
 
 [project.urls]
 Homepage = "https://github.com/stephs-repos/bearout"
+Repository = "https://github.com/stephs-repos/bearout"
+Issues = "https://github.com/stephs-repos/bearout/issues"
+Changelog = "https://github.com/stephs-repos/bearout/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bearout"]
+
+# The sdist carries only what the package needs. Experiments, docs, examples,
+# and the Crown-copyright e-Laws test fixtures stay in the repository.
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "LICENSE", "README.md", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

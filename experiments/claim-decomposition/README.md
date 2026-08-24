@@ -107,10 +107,12 @@ sentence-level verdicts with repair-instead-of-delete as a standalone change.
 - `claim_gate.py` — the rejected implementation (iteration 1 prompts).
 - `test_claim_gate.py` — its tests. They pass; passing tests are not a passing gate.
 - `PREREGISTRATION.md` — the prereg and its recorded outcome, reproduced
-  unedited from the internal record.
-- `artifacts/` — per-item verdicts for all three runs (474 items each: item id,
-  origin, true label, whether the labelling judges were unanimous, perturbation type,
-  the verifier's verdict). Enough to recompute every rate above. The fixture's
+  from the internal record; the only edits are bracketed redactions of
+  quoted sealed-fixture text.
+- `artifacts/` — per-item verdicts for the three gate runs and the
+  MiniCheck-770M detector baseline (474 items each: item id, origin, true
+  label, whether the labelling judges were unanimous, perturbation type, the
+  verifier's verdict). Enough to recompute every rate above. The fixture's
   sentence text and source blocks are **not** included — the instrument stays
   sealed so it cannot be trained or tuned against.
 

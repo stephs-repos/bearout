@@ -19,21 +19,21 @@ from claim_gate import (
 )
 
 ANSWER = (
-    "[fixture sentence redacted: sealed instrument]. "
-    "The first is a one-year warranty covering workmanship and materials. "
-    "The second is a two-year warranty covering water penetration."
+    "The library lends books for three weeks. "
+    "Renewals are allowed twice. "
+    "Late fees are ten cents per day."
 )
 SENTENCES = [
-    "[fixture sentence redacted: sealed instrument].",
-    "The first is a one-year warranty covering workmanship and materials.",
-    "The second is a two-year warranty covering water penetration.",
+    "The library lends books for three weeks.",
+    "Renewals are allowed twice.",
+    "Late fees are ten cents per day.",
 ]
-SOURCES = "[source excerpt redacted: sealed instrument]... (stub sources)"
+SOURCES = "Loans run three weeks and may be renewed twice; the late fee is ten cents per day."
 
 DECOMPOSITION = """{
-  "1": ["[redacted claim]", "[redacted claim]"],
-  "2": ["There is a one-year warranty", "The one-year warranty covers workmanship and materials"],
-  "3": ["There is a two-year warranty", "The two-year warranty covers water penetration"]
+  "1": ["The library lends books", "The loan period is three weeks"],
+  "2": ["Renewals are allowed", "Up to two renewals are allowed"],
+  "3": ["Late fees apply", "The late fee is ten cents per day"]
 }"""
 
 
@@ -87,18 +87,18 @@ async def test_all_claims_pass_returns_original_untouched():
 @pytest.mark.asyncio
 async def test_failed_claim_triggers_repair_not_amputation():
     repaired_text = (
-        "[fixture sentence redacted: sealed instrument]. "
-        "The first is a one-year warranty. "
-        "The second is a two-year warranty covering water penetration."
+        "The library lends books for three weeks. "
+        "Renewals are allowed. "
+        "Late fees are ten cents per day."
     )
     repaired_decomposition = """{
-      "1": ["[redacted claim]", "[redacted claim]",
-            "There is a one-year warranty", "There is a two-year warranty",
-            "The two-year warranty covers water penetration"]
+      "1": ["The library lends books", "The loan period is three weeks",
+            "Renewals are allowed", "Late fees apply",
+            "The late fee is ten cents per day"]
     }"""
     llm = StubLLM(
         decompose_responses=[DECOMPOSITION, repaired_decomposition],
-        verify_map={"The one-year warranty covers workmanship and materials": "UNSUPPORTED"},
+        verify_map={"Up to two renewals are allowed": "UNSUPPORTED"},
         recompose_response=repaired_text,
     )
     outcome = await validate_with_claims(ANSWER, SENTENCES, SOURCES, llm=llm)
@@ -106,7 +106,7 @@ async def test_failed_claim_triggers_repair_not_amputation():
     assert outcome.grounded is True
     assert outcome.repaired is True
     assert outcome.answer == repaired_text
-    assert outcome.removed_claims == ["The one-year warranty covers workmanship and materials"]
+    assert outcome.removed_claims == ["Up to two renewals are allowed"]
     # The flagged sentence shows unsupported in the derived verdicts...
     assert outcome.sentence_verdicts[1][1] is False
     # ...and the repair's claims were NOT re-rolled (all matched the
@@ -118,12 +118,12 @@ async def test_failed_claim_triggers_repair_not_amputation():
 async def test_repair_with_novel_unsupported_claim_abstains():
     """A repair that smuggles new content must not ship."""
     repaired_decomposition = """{
-      "1": ["[redacted claim]", "The deposit limit is $100,000"]
+      "1": ["The loan period is three weeks", "The deposit limit is $100,000"]
     }"""
     llm = StubLLM(
         decompose_responses=[DECOMPOSITION, repaired_decomposition],
         verify_map={
-            "The one-year warranty covers workmanship and materials": "UNSUPPORTED",
+            "Up to two renewals are allowed": "UNSUPPORTED",
             "The deposit limit is $100,000": "UNSUPPORTED",
         },
         recompose_response="Rewritten answer asserting the deposit limit is $100,000.",
@@ -137,10 +137,10 @@ async def test_repair_with_novel_unsupported_claim_abstains():
 @pytest.mark.asyncio
 async def test_majority_failed_claims_abstains_without_repair():
     verify_map = {
-        "[redacted claim]": "UNSUPPORTED",
-        "[redacted claim]": "UNSUPPORTED",
-        "There is a one-year warranty": "UNSUPPORTED",
-        "The one-year warranty covers workmanship and materials": "UNSUPPORTED",
+        "The library lends books": "UNSUPPORTED",
+        "The loan period is three weeks": "UNSUPPORTED",
+        "Renewals are allowed": "UNSUPPORTED",
+        "Up to two renewals are allowed": "UNSUPPORTED",
     }
     llm = StubLLM(verify_map=verify_map)
     outcome = await validate_with_claims(ANSWER, SENTENCES, SOURCES, llm=llm)
@@ -159,7 +159,7 @@ async def test_decompose_failure_signals_fallback():
 @pytest.mark.asyncio
 async def test_recompose_noanswer_abstains():
     llm = StubLLM(
-        verify_map={"The one-year warranty covers workmanship and materials": "UNSUPPORTED"},
+        verify_map={"Up to two renewals are allowed": "UNSUPPORTED"},
         recompose_response="NOANSWER",
     )
     outcome = await validate_with_claims(ANSWER, SENTENCES, SOURCES, llm=llm)

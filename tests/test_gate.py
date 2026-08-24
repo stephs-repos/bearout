@@ -15,16 +15,16 @@ from bearout.gate import (
 )
 
 ANSWER = (
-    "[fixture sentence redacted: sealed instrument]. "
-    "The first is a one-year warranty covering workmanship and materials. "
-    "The second is a two-year warranty covering water penetration."
+    "The library lends books for three weeks. "
+    "Renewals are allowed twice. "
+    "Late fees are ten cents per day."
 )
 SENTENCES = [
-    "[fixture sentence redacted: sealed instrument].",
-    "The first is a one-year warranty covering workmanship and materials.",
-    "The second is a two-year warranty covering water penetration.",
+    "The library lends books for three weeks.",
+    "Renewals are allowed twice.",
+    "Late fees are ten cents per day.",
 ]
-SOURCES = "[source excerpt redacted: sealed instrument]... (stub sources)"
+SOURCES = "Loans run three weeks and may be renewed twice; the late fee is ten cents per day."
 
 
 class StubJudge:

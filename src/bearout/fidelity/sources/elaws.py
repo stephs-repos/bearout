@@ -271,7 +271,10 @@ async def fetch_api_content(url: str, *, timeout_ms: int = 60_000) -> str | None
         return None
     try:
         import httpx
-
+    except ImportError:
+        logger.warning("e-Laws fetch needs the 'fetchers' extra: pip install 'bearout[fetchers]'")
+        return None
+    try:
         async with httpx.AsyncClient(timeout=timeout_ms / 1000) as client:
             resp = await client.get(api_url, headers={"Accept": "application/json"})
             resp.raise_for_status()

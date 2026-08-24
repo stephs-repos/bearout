@@ -10,10 +10,10 @@ Design notes:
   else, and re-measure before relying on the published rates: a different
   judge is a different operating point.
 - ``temperature`` is forwarded only when the target model accepts it.
-  Claude models from the 4.6 generation onward reject sampling parameters
-  with a 400, while the measured judge predates that change and was run at
-  temperature 0 — so the parameter has to actually reach the API for the
-  default configuration to reproduce the measurement.
+  Newer Claude generations reject sampling parameters outright, while the
+  measured judge predates that change and was run at temperature 0 — so
+  the parameter has to actually reach the API for the default
+  configuration to reproduce the measurement.
 - ``cache_prefix`` (the sources block) is placed under a prompt-cache
   breakpoint, so the fan-out of per-sentence verifier calls re-reads the
   same sources at cache-read rates instead of re-billing them per call.
@@ -43,8 +43,8 @@ class AnthropicChat:
 
     ``forward_temperature`` defaults to True only for :data:`MEASURED_MODEL`,
     whose measurement ran at temperature 0.  Set it True explicitly for another
-    older model that accepts sampling parameters; leave it False for any model
-    from the Claude 4.6 generation onward, which reject them outright.
+    older model that accepts sampling parameters; leave it False for newer
+    generations, which reject them outright.
     """
 
     def __init__(

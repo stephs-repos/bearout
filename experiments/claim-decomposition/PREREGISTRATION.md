@@ -1,11 +1,13 @@
 # Pre-registration: claim-level grounding validator (2026-06-12)
 
+> Reproduced from the internal record. The only edits are the bracketed
+> redactions below, which remove quoted text from the sealed fixture.
+
 Phase B of the drawing-board plan; the P3.1 structural fix. Committed
 before implementation and before any measurement (G2). Lead exhibit:
-S12 — the verifier deleted "[fixture sentence redacted: sealed instrument]
-[redacted]" 3/3 while holding the chunk that says
-"[source excerpt redacted: sealed instrument]… [redacted]
-the plan" at rank 2 of its own sources block.
+S12 — the verifier deleted [fixture sentence redacted: sealed
+instrument] 3/3 while holding the chunk that says [source excerpt
+redacted: sealed instrument] at rank 2 of its own sources block.
 
 ## Design under test ("claim" mode; v1 "sentence" mode stays default until the gate passes)
 
@@ -45,7 +47,7 @@ claims wait for the next G3 median-of-3)
 
 - S12: thesis + first-layer sentences survive; answer enumerates all
   three layers; no mutilation.
-- Q30: the composed [section reference redacted] answer survives → answers (citation
+- Q30: the composed answer [section reference redacted] survives → answers (citation
   check may still gate the eval verdict).
 - Q36/Q2b/S4/S9 abstain-flake class: ≥2 stabilize to answered.
 - Guards: OOS 0/22 unaffected (validator runs after the OOS gates);

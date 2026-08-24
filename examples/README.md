@@ -36,17 +36,17 @@ The judge is a **scripted stub** that reads verdicts from a table. It demonstrat
 
 The same two answer scenarios against a real model, with every verifier call metered: call count, input and output tokens, cache reads, wall time, and an estimated cost.
 
-**This is not an accuracy measurement.** It shows what the gate does on a handful of sentences. The published false-pass and false-strip rates come from a sealed, expert-labelled 474-item set that is deliberately not in this repository — see the top-level README for the methodology and the results. Cost and latency are reported here because a gate that makes one model call per sentence has a real per-answer price, and that is the second question anyone asks after accuracy.
+**This is not an accuracy measurement.** It shows what the gate does on a handful of sentences. The published false-pass and false-strip rates come from a sealed, independently labelled 474-item set that is deliberately not in this repository — see the top-level README for the methodology and the results. Cost and latency are reported here because a gate that makes one model call per sentence has a real per-answer price, and that is the second question anyone asks after accuracy.
 
 The meter is a wrapper around the adapter rather than instrumentation inside the gate. That is deliberate: the gate keeps telemetry out of the code path the published error rates describe, so cost accounting belongs to the adapter's side of the `ChatLLM` protocol.
 
 Prices are pinned per model with an as-of date; a model with no pinned price reports tokens and latency and no cost, because a stale price is worse than no price.
 
-> The error rates in the top-level README were measured with a specific judge model. Running against a different model is a different operating point — the example says so on every run.
+> The error rates in the top-level README were measured with a specific judge model, which is the default here. Running against a different model is a different operating point, and the example says so whenever `--model` picks one.
 
 ## 03 — corpus fidelity, live
 
-Verifies a stored corpus of O. Reg. 242/21 against Ontario's e-Laws API, in two passes.
+Verifies a stored corpus of O. Reg. 242/21 against Ontario's e-Laws API, in two passes. The live fetch needs the `fetchers` extra (`pip install 'bearout[fetchers]'`); `--offline` does not.
 
 **Pass 1** builds a faithful corpus through the real ingest contract (`chunk_text`, the single shared definition of a stored chunk, so ingest and verifier cannot drift apart). Every section verifies.
 

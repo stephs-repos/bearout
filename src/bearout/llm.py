@@ -25,8 +25,8 @@ class ChatLLM(Protocol):
     the user message.
 
     ``temperature`` is advisory: the gate asks for determinism, but
-    current Claude models reject sampling parameters entirely, so
-    adapters are free to ignore it.
+    newer Claude models reject sampling parameters entirely, so
+    adapters are free to ignore it when the target model would refuse it.
     """
 
     async def chat(

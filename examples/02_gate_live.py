@@ -17,7 +17,7 @@ call per sentence.
 
 **This does not measure accuracy.**  It shows the gate's behavior on a
 handful of sentences.  The published false-pass and false-strip rates
-come from a sealed, expert-labelled 474-item set that is deliberately not
+come from a sealed, independently labelled 474-item set that is deliberately not
 shipped in this repository — training against the exam destroys the only
 measure you have.  See the README for the methodology and the results.
 
@@ -36,18 +36,22 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from bearout import GateOutcome, validate_grounding
-from bearout.adapters.anthropic import DEFAULT_MODEL, AnthropicChat
+from bearout.adapters.anthropic import DEFAULT_MODEL, MEASURED_MODEL, AnthropicChat
 
-# List prices in USD per million tokens, as published 2026-06-24. Only models
+# List prices in USD per million tokens, as published 2026-08-24. Only models
 # whose pricing is pinned here get a cost estimate; anything else reports
 # tokens and latency only, because a stale price is worse than no price.
 PRICING_PER_MTOK: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4-5-20250929": (3.00, 15.00),  # the measured judge
+    "claude-sonnet-4-5": (3.00, 15.00),
     "claude-opus-5": (5.00, 25.00),
     "claude-sonnet-5": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
@@ -154,14 +158,26 @@ async def main() -> int:
     parser.add_argument("--save", action="store_true", help="write the run transcript to disk")
     args = parser.parse_args()
 
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print(
+            "This example calls the live Anthropic API and needs a key:\n"
+            "    export ANTHROPIC_API_KEY=...\n"
+            "For a run that needs no key, see examples/01_gate_offline.py.",
+            file=sys.stderr,
+        )
+        return 1
+
     meter = Meter(inner=AnthropicChat(model=args.model))
 
     print(f"Judge model: {args.model}")
-    print(
-        "Note: the error rates published in the README were measured with a "
-        "different judge.\nA different model is a different operating point — "
-        "re-measure before relying on it."
-    )
+    if args.model == MEASURED_MODEL:
+        print("This is the judge the error rates in the README were measured with.")
+    else:
+        print(
+            "Note: the error rates published in the README were measured with a "
+            "different judge.\nA different model is a different operating point — "
+            "re-measure before relying on it."
+        )
 
     outcome_a = await validate_grounding(
         answer=ANSWER_ONE_BAD_SENTENCE, sources_block=SOURCES, llm=meter

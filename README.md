@@ -1,5 +1,7 @@
 # Bearout
 
+[![CI](https://github.com/stephs-repos/bearout/actions/workflows/ci.yml/badge.svg)](https://github.com/stephs-repos/bearout/actions/workflows/ci.yml)
+
 **A runtime grounding gate that fails closed and publishes its own error rates.**
 
 Bearout is an open-source demonstration of the anti-confabulation mechanisms
@@ -89,8 +91,9 @@ All rows in this table are scored against **fixture v1 labels**, the version eve
 one of these runs was executed against, so the designs are compared on identical
 ground. (The headline above uses the corrected v3 labels; under those, the shipped
 gate is 20.2/2.4 and claim iteration 1 is 41.5/2.4, and the ranking is unchanged.)
-Every rate here is recomputable from
-[`artifacts/`](experiments/claim-decomposition/artifacts/).
+Every rate here, the MiniCheck row included, is recomputable from the per-item
+artifacts in
+[`experiments/claim-decomposition/artifacts/`](https://github.com/stephs-repos/bearout/tree/main/experiments/claim-decomposition/artifacts).
 
 The design failed twice and did not ship, and the structural reason generalizes
 beyond this domain. A sentence survives only if *all* its claims do, so the
@@ -102,7 +105,7 @@ The design did cure the specific case that motivated it, and it was rejected
 anyway, because one convincing example is not an eval.
 
 Code, preregistration, and per-item run artifacts:
-[`experiments/claim-decomposition/`](experiments/claim-decomposition/).
+[`experiments/claim-decomposition/`](https://github.com/stephs-repos/bearout/tree/main/experiments/claim-decomposition).
 
 The last row deserves its own note. An off-the-shelf trained detector had
 comparable false-strip on this domain and missed **30% of fabrications**, which
@@ -117,7 +120,7 @@ welcome via an issue.
 
 | | Runtime gate | Per-sentence | Fail-closed by default | Publishes its own error rates | Verifies the corpus |
 |---|---|---|---|---|---|
-| **bearout** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Bearout** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Vertex Check Grounding | returns scores | ✅ | ❌ your policy | ❌ | ❌ |
 | Azure groundedness + correction | ✅ | ✅ | ❌ configurable | ❌ | ❌ |
 | Bedrock contextual grounding | ✅ | response-level threshold | ⚠️ threshold you set | ❌ | ❌ |
@@ -135,7 +138,7 @@ corpus itself against its authoritative source, which none of the products above
 do.
 
 **The judge is swappable.** It's a single `chat()` protocol
-([`llm.py`](src/bearout/llm.py)), so a trained detector such as
+([`llm.py`](https://github.com/stephs-repos/bearout/blob/main/src/bearout/llm.py)), so a trained detector such as
 LettuceDetect, MiniCheck, Lynx, or your own can be the backend. The numbers above
 are for a prompted judge; substituting a detector is a different operating point
 that you should re-measure on your own fixture.
@@ -145,9 +148,15 @@ that you should re-measure on your own fixture.
 ## Quickstart
 
 ```bash
-pip install bearout[anthropic]
+pip install 'bearout[anthropic]'
 export ANTHROPIC_API_KEY=...
 ```
+
+No API key? `python examples/01_gate_offline.py` runs the gate against a
+scripted judge, and `python examples/03_fidelity_elaws.py` verifies a real
+Ontario regulation against the government source with no key at all (it needs
+the `fetchers` extra: `pip install 'bearout[fetchers]'`). See
+[`examples/`](https://github.com/stephs-repos/bearout/tree/main/examples).
 
 ```python
 import asyncio
@@ -192,8 +201,9 @@ verifier runs three layers per document:
   fail is the signature of a parser bug that survived ingest.
 - **L3. Silent drops.** Independent section inventory, compared both ways.
 
-Ontario's e-Laws API is the first source adapter; the corpus side is a pluggable
-reader (Postgres reference adapter included). Latest live run against the
+Ontario's e-Laws API is the first source adapter (`pip install 'bearout[fetchers]'`
+for the live fetch); the corpus side is a pluggable reader (Postgres reference
+adapter included, `pip install 'bearout[pgvector]'`). Latest live run against the
 prototype's corpus: **418/418 sections verified across 9 statutes and regulations.**
 
 ## Design principles

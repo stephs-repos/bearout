@@ -7,7 +7,7 @@ shipped gutted.
 
 **This is the code the published error rates describe.**  See the
 "Measured error rates" section of the README: on a sealed 474-item
-expert-labeled fixture, this gate false-strips ~20% of supported
+independently labelled fixture, this gate false-strips ~20% of supported
 sentences and false-passes ~2% of unsupported ones.  The prompt below is
 the exact string under measurement — changing a word changes the
 operating point and invalidates the numbers.
