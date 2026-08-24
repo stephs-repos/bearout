@@ -4,12 +4,12 @@ Library-first: you supply the roster (a list of :class:`DocSpec`) and a
 ``CorpusReader`` (``doc_id -> {section_id: stored_chunk_text}``), and
 compose your own console entry point::
 
-    from substantiate.fidelity import DocSpec, run
+    from bearout.fidelity import DocSpec, run
 
     ROSTER = [DocSpec(doc_id=..., title=..., url=..., fixture_filename=...)]
 
     def read_corpus(doc_id: str) -> dict[str, str]:
-        ...  # your store; see substantiate.adapters.postgres for a reference
+        ...  # your store; see bearout.adapters.postgres for a reference
 
     if __name__ == "__main__":
         raise SystemExit(run.main(roster=ROSTER, corpus_reader=read_corpus))
@@ -36,9 +36,9 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from substantiate.fidelity.sources.elaws import fetch_api_content
-from substantiate.fidelity.spec import DocSpec
-from substantiate.fidelity.verify import (
+from bearout.fidelity.sources.elaws import fetch_api_content
+from bearout.fidelity.spec import DocSpec
+from bearout.fidelity.verify import (
     FIDELITY_VERDICTS,
     SectionFinding,
     verify_doc,

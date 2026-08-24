@@ -1,6 +1,6 @@
 """Corpus fidelity verification: does your corpus match the law, today?
 
-Three layers, per document (see :mod:`substantiate.fidelity.verify` for
+Three layers, per document (see :mod:`bearout.fidelity.verify` for
 the full contract):
 
 L1 — currency + parser drift: re-fetch the official text, rebuild the
@@ -14,11 +14,11 @@ L3 — silent drops: an independent section inventory compared BOTH ways
      sections the official text no longer shows).
 
 First authoritative-source adapter: Ontario's e-Laws JSON API
-(:mod:`substantiate.fidelity.sources.elaws`).
+(:mod:`bearout.fidelity.sources.elaws`).
 """
 
-from substantiate.fidelity.spec import DocSpec, apply_section_filter, chunk_text, section_label
-from substantiate.fidelity.verify import FIDELITY_VERDICTS, SectionFinding, verify_doc
+from bearout.fidelity.spec import DocSpec, apply_section_filter, chunk_text, section_label
+from bearout.fidelity.verify import FIDELITY_VERDICTS, SectionFinding, verify_doc
 
 __all__ = [
     "FIDELITY_VERDICTS",

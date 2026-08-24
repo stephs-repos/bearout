@@ -6,7 +6,7 @@ project's write-up can be checked against the run that produced it.
 
 ## What was tried
 
-The shipped gate ([`substantiate.gate`](../../src/substantiate/gate.py)) asks one
+The shipped gate ([`bearout.gate`](../../src/bearout/gate.py)) asks one
 question per sentence: *is this whole sentence entailed by the sources?* When a
 sentence fails, it is deleted.
 
@@ -27,7 +27,7 @@ measurement ([`PREREGISTRATION.md`](PREREGISTRATION.md)), including an
 anti-fishing cap of at most two tuning iterations against the fixture, so it
 could not be quietly tuned until the number looked good.
 
-Measured on the same sealed 474-item expert-labeled fixture as the shipped gate:
+Measured on the same sealed 474-item independently labelled fixture as the shipped gate:
 
 | Design | False-strip | False-pass | Verdict |
 |---|---|---|---|
@@ -109,7 +109,7 @@ sentence-level verdicts with repair-instead-of-delete as a standalone change.
 - `PREREGISTRATION.md` — the prereg and its recorded outcome, reproduced
   unedited from the internal record.
 - `artifacts/` — per-item verdicts for all three runs (474 items each: item id,
-  origin, true label, whether the human judges were unanimous, perturbation type,
+  origin, true label, whether the labelling judges were unanimous, perturbation type,
   the verifier's verdict). Enough to recompute every rate above. The fixture's
   sentence text and source blocks are **not** included — the instrument stays
   sealed so it cannot be trained or tuned against.

@@ -37,12 +37,12 @@ import html as html_lib
 import re
 from dataclasses import dataclass, field
 
-from substantiate.fidelity.sources.elaws import (
+from bearout.fidelity.sources.elaws import (
     SECTION_LEAD_RE,
     StatuteSection,
     parse_statute_html,
 )
-from substantiate.fidelity.spec import DocSpec, chunk_text
+from bearout.fidelity.spec import DocSpec, chunk_text
 
 FIDELITY_VERDICTS = frozenset(
     {"text_mismatch", "missing_in_corpus", "extra_in_corpus", "containment_fail"}

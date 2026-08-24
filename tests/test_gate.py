@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from substantiate.gate import (
+from bearout.gate import (
     GROUNDING_VERIFIER_SYSTEM_PROMPT,
     split_sentences,
     validate_grounding,

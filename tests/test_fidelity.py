@@ -13,10 +13,10 @@ from pathlib import Path
 
 import pytest
 
-import substantiate.fidelity.run as run
-import substantiate.fidelity.verify as vsf
-from substantiate.fidelity.sources.elaws import parse_statute_html
-from substantiate.fidelity.spec import DocSpec, apply_section_filter, chunk_text, section_label
+import bearout.fidelity.run as run
+import bearout.fidelity.verify as vsf
+from bearout.fidelity.sources.elaws import parse_statute_html
+from bearout.fidelity.spec import DocSpec, apply_section_filter, chunk_text, section_label
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 

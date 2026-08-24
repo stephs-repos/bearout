@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "substantiate"
+name = "bearout"
 version = "0.1.0.dev0"
 description = "Fail-closed grounding for RAG: every sentence verified against its cited source, or suppressed. Verifier error rates measured and published."
 readme = "README.md"
@@ -36,10 +36,10 @@ pgvector = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8", "httpx>=0.27"]
 
 [project.urls]
-Homepage = "https://github.com/stephswierenga/substantiate"
+Homepage = "https://github.com/stephs-repos/bearout"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/substantiate"]
+packages = ["src/bearout"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -58,4 +58,4 @@ select = ["E", "F", "I", "W", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 # The system prompts are the exact strings under measurement — they are
 # never rewrapped to satisfy line length.
-"src/substantiate/gate.py" = ["E501"]
+"src/bearout/gate.py" = ["E501"]

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from substantiate.fidelity.sources.elaws import StatuteSection
+from bearout.fidelity.sources.elaws import StatuteSection
 
 
 @dataclass(frozen=True)

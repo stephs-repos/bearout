@@ -52,7 +52,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 
-from substantiate.llm import ChatLLM  # noqa: E402  (experiment: not part of the package)
+from bearout.llm import ChatLLM  # noqa: E402  (experiment: not part of the package)
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ async def _decompose(sentences: list[str], llm: ChatLLM) -> dict[int, list[str]]
             mapping[idx] = [str(c).strip() for c in value if str(c).strip()]
         return {i: mapping.get(i, []) for i in range(1, len(sentences) + 1)}
     except Exception as exc:  # noqa: BLE001 — signal fallback, never fail open
-        logger.warning("substantiate: decompose failed (%s); signalling fallback", exc)
+        logger.warning("bearout: decompose failed (%s); signalling fallback", exc)
         return None
 
 
@@ -149,7 +149,7 @@ async def _verify_claim(claim: str, sources_block: str, verifier: ChatLLM) -> bo
             temperature=0.0,
         )
     except Exception as exc:  # noqa: BLE001 — fail closed
-        logger.warning("substantiate: verifier failed (%s); claim unsupported", exc)
+        logger.warning("bearout: verifier failed (%s); claim unsupported", exc)
         return False
     return (result.get("content") or "").strip().upper().startswith("SUPPORTED")
 
@@ -176,7 +176,7 @@ async def _recompose(answer: str, failed: list[str], llm: ChatLLM) -> str | None
             temperature=0.0,
         )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("substantiate: recompose failed (%s)", exc)
+        logger.warning("bearout: recompose failed (%s)", exc)
         return None
     text = (result.get("content") or "").strip()
     if not text or text.upper().startswith("NOANSWER"):
@@ -269,7 +269,7 @@ async def validate_with_claims(
         novel_verdicts = await _verify_claims(novel, sources_block, llm)
         if any(not v.supported for v in novel_verdicts):
             logger.warning(
-                "substantiate: repair introduced %d unverifiable claim(s); abstaining",
+                "bearout: repair introduced %d unverifiable claim(s); abstaining",
                 sum(not v.supported for v in novel_verdicts),
             )
             outcome.answer, outcome.grounded = "", False
@@ -277,7 +277,7 @@ async def validate_with_claims(
 
     outcome.answer, outcome.repaired = repaired, True
     logger.info(
-        "substantiate: repaired answer (removed %d/%d claims)",
+        "bearout: repaired answer (removed %d/%d claims)",
         len(failed),
         len(verdicts),
     )

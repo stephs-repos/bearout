@@ -1,0 +1,904 @@
+<title>Bearout</title>
+
+<style>
+  :root {
+    --paper:      #F3F5F8;
+    --paper-sunk: #E7EBF1;
+    --ink:        #131922;
+    --ink-soft:   #46505E;
+    --ink-faint:  #737F8E;
+    --rule:       #CFD7E1;
+    --accent:     #1E4C8F;
+    --accent-soft:#E2EAF6;
+    --oxide:      #A33A28;
+    --oxide-soft: #F6E7E3;
+
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --serif: "Iowan Old Style", Charter, "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --s--2: 0.75rem;
+    --s--1: 0.875rem;
+    --s-0:  1.0625rem;
+    --s-1:  1.25rem;
+    --s-2:  1.5rem;
+    --s-3:  1.9rem;
+    --s-4:  2.6rem;
+
+    --measure: 64ch;
+    --note-col: 13rem;
+    --gutter: 2.75rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:      #0F141B;
+      --paper-sunk: #171E27;
+      --ink:        #E4E9F0;
+      --ink-soft:   #A6B1C0;
+      --ink-faint:  #78848F;
+      --rule:       #2A3542;
+      --accent:     #7FA9E8;
+      --accent-soft:#1A2740;
+      --oxide:      #E08A76;
+      --oxide-soft: #2E1D19;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #0F141B;
+    --paper-sunk: #171E27;
+    --ink:        #E4E9F0;
+    --ink-soft:   #A6B1C0;
+    --ink-faint:  #78848F;
+    --rule:       #2A3542;
+    --accent:     #7FA9E8;
+    --accent-soft:#1A2740;
+    --oxide:      #E08A76;
+    --oxide-soft: #2E1D19;
+  }
+  :root[data-theme="light"] {
+    --paper:      #F3F5F8;
+    --paper-sunk: #E7EBF1;
+    --ink:        #131922;
+    --ink-soft:   #46505E;
+    --ink-faint:  #737F8E;
+    --rule:       #CFD7E1;
+    --accent:     #1E4C8F;
+    --accent-soft:#E2EAF6;
+    --oxide:      #A33A28;
+    --oxide-soft: #F6E7E3;
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: var(--s-0);
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 1.5rem 6rem;
+  }
+
+  :where(a) { color: var(--accent); text-underline-offset: 0.18em; }
+  :where(a):focus-visible,
+  :where(button):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* ---- Layout: reading column with statute-style headnotes in the margin ---- */
+
+  .band {
+    max-width: calc(var(--note-col) + var(--gutter) + var(--measure));
+    margin-inline: auto;
+  }
+  .band + .band { margin-top: 3.25rem; }
+
+  .flow > * + * { margin-top: 1.1em; }
+  .flow > h2 + *,
+  .flow > h3 + * { margin-top: 0.7em; }
+
+  @media (min-width: 62rem) {
+    .band {
+      display: grid;
+      grid-template-columns: var(--note-col) minmax(0, var(--measure));
+      column-gap: var(--gutter);
+      align-items: start;
+    }
+    .band > .flow { grid-column: 2; }
+    .band > .headnote { grid-column: 1; text-align: right; padding-top: 0.45rem; }
+  }
+
+  .headnote {
+    font-family: var(--sans);
+    font-size: var(--s--2);
+    line-height: 1.45;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin: 0 0 0.85rem;
+  }
+  .headnote em {
+    display: block;
+    text-transform: none;
+    letter-spacing: 0;
+    font-style: normal;
+    font-family: var(--serif);
+    font-size: var(--s--1);
+    color: var(--ink-soft);
+    margin-top: 0.4rem;
+  }
+
+  /* ---- Type ---- */
+
+  h1, h2, h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+    margin: 0;
+  }
+  h1 { font-size: var(--s-4); line-height: 1.08; }
+  h2 { font-size: var(--s-2); line-height: 1.2; margin-top: 0.4em; }
+  h3 {
+    font-size: var(--s-0);
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+    color: var(--ink-soft);
+  }
+  p { margin: 0; }
+  strong { font-weight: 600; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--s--2);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 1rem;
+  }
+
+  .standfirst {
+    font-size: var(--s-1);
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin-top: 1.1rem;
+  }
+
+  /* ---- Masthead ---- */
+
+  .masthead {
+    padding-top: 4.5rem;
+    padding-bottom: 2.5rem;
+  }
+  .masthead .rule {
+    height: 3px;
+    background: var(--ink);
+    margin-bottom: 2rem;
+  }
+  @media (min-width: 62rem) {
+    .masthead .rule { grid-column: 1 / -1; }
+  }
+
+  /* ---- The demonstration ---- */
+
+  .demo {
+    background: var(--paper-sunk);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1.5rem 1.6rem;
+    margin-top: 2rem;
+    font-size: var(--s--1);
+  }
+  .demo-label {
+    font-family: var(--mono);
+    font-size: var(--s--2);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 0.7rem;
+  }
+  .demo-answer { line-height: 1.75; }
+  .demo p + .demo-label { margin-top: 1.5rem; }
+
+  .kept { border-bottom: 2px solid var(--accent-soft); }
+  .cut {
+    text-decoration: line-through;
+    text-decoration-color: var(--oxide);
+    text-decoration-thickness: 1.5px;
+    color: var(--ink-faint);
+    background: var(--oxide-soft);
+    padding: 0 0.15em;
+  }
+  .verdict {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    color: var(--oxide);
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    padding: 0.05em 0.4em;
+    margin-left: 0.35em;
+    white-space: nowrap;
+    vertical-align: 0.1em;
+  }
+  .demo-note {
+    font-family: var(--sans);
+    font-size: var(--s--2);
+    color: var(--ink-soft);
+    margin-top: 1.1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+    line-height: 1.5;
+  }
+
+  /* ---- Figures ---- */
+
+  .figure {
+    margin-top: 1.6rem;
+    border-top: 2px solid var(--ink);
+    border-bottom: 1px solid var(--rule);
+  }
+  .figure-caption {
+    font-family: var(--sans);
+    font-size: var(--s--2);
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin-top: 0.75rem;
+  }
+  .scroll { overflow-x: auto; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--sans);
+    font-size: var(--s--1);
+  }
+  th, td {
+    text-align: left;
+    padding: 0.62rem 0.9rem 0.62rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: baseline;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  th {
+    font-size: var(--s--2);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+  td.num, th.num {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    padding-right: 0;
+    white-space: nowrap;
+  }
+  tr.is-shipped td { font-weight: 600; }
+  tr.is-shipped td.num { color: var(--accent); }
+  td .qual {
+    display: block;
+    font-family: var(--sans);
+    font-size: var(--s--2);
+    font-weight: 400;
+    color: var(--ink-faint);
+    letter-spacing: 0;
+  }
+
+  /* ---- The two-error panel ---- */
+
+  .errors {
+    display: grid;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    margin-top: 1.6rem;
+    overflow: hidden;
+  }
+  @media (min-width: 34rem) { .errors { grid-template-columns: 1fr 1fr; } }
+  .error-cell { background: var(--paper); padding: 1.25rem 1.3rem; }
+  .error-cell h3 { margin-bottom: 0.5rem; color: var(--ink); }
+  .error-cell p { font-size: var(--s--1); color: var(--ink-soft); line-height: 1.55; }
+  .error-rate {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--s-3);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    display: block;
+    margin-bottom: 0.55rem;
+  }
+  .error-cell.is-danger .error-rate { color: var(--oxide); }
+  .error-cell.is-cost .error-rate { color: var(--accent); }
+  .error-cell .tag {
+    font-family: var(--mono);
+    font-size: var(--s--2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-top: 0.7rem;
+  }
+
+  /* ---- Pull quote ---- */
+
+  .pull {
+    font-size: var(--s-1);
+    line-height: 1.45;
+    color: var(--ink);
+    border-left: 3px solid var(--accent);
+    padding: 0.15rem 0 0.15rem 1.15rem;
+    margin-top: 1.6rem;
+  }
+
+  /* ---- Method list ---- */
+
+  .method { list-style: none; padding: 0; margin-top: 1.4rem; }
+  .method > li { padding: 1.15rem 0; border-top: 1px solid var(--rule); }
+  .method > li:first-child { border-top: 2px solid var(--ink); }
+  .method h3 { margin-bottom: 0.35rem; color: var(--ink); }
+  .method p { font-size: var(--s--1); color: var(--ink-soft); line-height: 1.58; }
+
+  /* ---- Layers ---- */
+
+  .layers { list-style: none; padding: 0; margin-top: 1.4rem; }
+  .layers > li {
+    display: grid;
+    grid-template-columns: 2.6rem minmax(0, 1fr);
+    gap: 0.9rem;
+    padding: 0.95rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .layers .tier {
+    font-family: var(--mono);
+    font-size: var(--s--1);
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.03em;
+  }
+  .layers p { font-size: var(--s--1); color: var(--ink-soft); line-height: 1.55; }
+  .layers strong { color: var(--ink); font-weight: 600; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--paper-sunk);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+  }
+
+  .closer {
+    margin-top: 4rem;
+    padding-top: 1.6rem;
+    border-top: 2px solid var(--ink);
+    font-family: var(--sans);
+    font-size: var(--s--1);
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<article>
+
+  <header class="band masthead">
+    <div class="rule"></div>
+    <div class="flow">
+      <p class="eyebrow">An introduction</p>
+      <h1>Bearout</h1>
+      <p class="standfirst">
+        A grounding gate that guards against confabulation in AI answers generated from
+        documents. It checks
+        every sentence of a drafted answer against the sources that answer is supposed
+        to rest on, removes anything it cannot verify, and reports how often it gets
+        that judgement wrong.
+      </p>
+
+      <div class="demo">
+        <p class="demo-label">Sources retrieved</p>
+        <p>A statute section requiring written notice of a claim to be given to the
+           Corporation in the format it specifies, under Reg.&nbsp;892 s.&nbsp;4(1),
+           and a page describing the warranty process, which advises keeping a copy
+           of anything submitted.</p>
+
+        <p class="demo-label">Draft answer from the model</p>
+        <p class="demo-answer">
+          <span class="kept">You must give the Corporation written notice of your claim under Reg. 892 s. 4(1).</span>
+          <span class="cut">Tarion will then pay you $100,000.</span><span class="verdict">unsupported</span>
+          <span class="kept">Keep a copy of your submission.</span>
+        </p>
+
+        <p class="demo-note">
+          The middle sentence reads just as convincingly as the two around it, and it sits
+          inside an answer that is otherwise properly sourced, but no source mentions a
+          dollar figure anywhere. It is removed before the answer reaches anyone, and
+          the gate reports exactly what it removed and why.
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <section class="band">
+    <p class="headnote">The problem
+      <em>Handing a model the right documents does not mean it will answer from them.</em>
+    </p>
+    <div class="flow">
+      <h2>Why models add things the sources do not contain</h2>
+      <p>
+        A language model does not look anything up while it writes. Conceptually, it produces text one
+        word at a time, using a statistical guess based on the pattern of what came before. The
+        machinery that produces a true sentence produces an invented one in the same way,
+        so a fabricated fact can sound like a real one, and nothing inside the model marks the difference between the two.
+      </p>
+      <p>
+        Relying on the model&rsquo;s recall is fragile wherever an answer has to match
+        what particular documents actually say, as it must when the source is a statute
+        and its regulations, the terms of an insurance policy, a compliance manual, or
+        a contract. Some of the material was never in the model&rsquo;s training data at all, such as
+        a policy written after the model was trained, or a set of private files. Even
+        when it was, generation leans toward whatever was common in that data, so a
+        specific provision or an unusual exception tends to come back smoothed toward
+        the more typical case. Both problems have the same remedy, which is to fetch
+        the relevant documents at the moment a question is asked, pass them to the
+        model, and tell it to answer from those. This is the classic Retrieval
+        Augmented Generation (RAG) approach, and handing the model the exact text at
+        question time removes the need to rely on its recall.
+      </p>
+      <p>
+        The difficulty is that &ldquo;answer from these documents&rdquo; is an
+        instruction rather than a constraint. The sources arrive as more text in the
+        prompt, and the model carries on generating exactly as it did before, leaning on
+        what it was given most of the time but not all of the time. In an ordinary
+        pipeline there is nothing further down the line that catches the inconsistencies.
+      </p>
+      <p>
+        So whatever the model confabulated survives all the way to the reader. It might be
+        a figure that was never stated, a deadline that sounds plausible, or a qualifier
+        such as &ldquo;immediately&rdquo;, &ldquo;in every case&rdquo;, or
+        &ldquo;within&nbsp;30&nbsp;days&rdquo; that quietly changes what the source
+        actually said. Errors of this kind are the dangerous ones because they arrive
+        wrapped in correct material and correct citations, so the answer as a whole looks
+        properly sourced even though one sentence in it is not.
+      </p>
+      <p>
+        The consequences are no longer hypothetical. More than 1,600 court cases
+        involving AI-fabricated legal citations had been logged as of
+        August&nbsp;2026, with sanctions, fines, and professional suspensions
+        attached, in a running tally kept by
+        <a href="https://www.damiencharlotin.com/hallucinations/">Damien
+        Charlotin&rsquo;s AI Hallucination Cases database</a>. That count covers one profession, and within it only one
+        kind of mistake. It exists at all because court rulings are public, so a
+        fabricated citation ends up on the record where somebody can find it. Most work
+        is never published that way, and the same mistakes there go uncounted.
+      </p>
+      <p>
+        Bearout is an anti-confabulation architecture distilled from a prototype
+        that answered consumer
+        questions about Ontario&rsquo;s new-home-warranty scheme, where the cost of a
+        wrong sentence is not a poor demonstration but a homeowner who now holds a
+        false belief about their own rights.
+      </p>
+    </div>
+  </section>
+
+  <section class="band">
+    <p class="headnote">What it does
+      <em>Each sentence is checked, failures are removed, and the answer is withheld if too little survives.</em>
+    </p>
+    <div class="flow">
+      <h2>How the gate decides what ships</h2>
+      <p>
+        Many tools in this area are evaluation libraries. They score a batch of answers
+        the system has already produced, and the score goes to a dashboard or a report,
+        where an engineer reads it and decides whether to take action, after
+        the answers have already reached their readers. Bearout instead sits in
+        the live path between the model&rsquo;s draft and the reader and makes the
+        decision itself, so the answer the model drafted is not always the answer that
+        reaches the reader.
+      </p>
+      <p>
+        The answer is split into sentences, and each sentence is checked against the
+        retrieved sources by a strict judge. A sentence passes only if everything it
+        asserts, including every figure, date, condition, and qualifier, is either stated
+        in the sources or follows directly from them. Rewording the source material is
+        acceptable, but adding anything to it is not.
+      </p>
+      <p>
+        The behaviour around that check matters more than the check itself.
+      </p>
+      <p>
+        <strong>It fails closed.</strong> The gate can also break in its own right, and
+        every such path leads to removal rather than passage. Anything that is not an
+        affirmative pass counts as a failure, so if the judge errors, the network drops,
+        or the reply comes back unreadable, the sentence is treated as unsupported and
+        removed. A gate that jams
+        shut when it breaks still protects the reader, because the worst it can do is
+        withhold an answer. A gate that swings open when it breaks stops protecting
+        anyone at precisely the moment its own machinery has failed.
+      </p>
+      <p>
+        <strong>It will refuse to answer.</strong> When too much of the draft has been
+        removed, the whole answer is withheld rather than passed along as a remnant,
+        because a half-answer that has lost its conditions and exceptions still reads
+        as though it were complete, which makes it more dangerous than no answer at
+        all. The caller gets back the verdicts rather than text to display, and
+        has to tell the person that the question could not be answered from the
+        sources at hand.
+      </p>
+      <p>
+        <strong>Every decision is explainable.</strong> The gate returns the surviving
+        text together with the exact sentences it removed and its verdict on each one,
+        so a system that keeps those outcomes can say, months later, exactly why a
+        particular sentence disappeared.
+      </p>
+    </div>
+  </section>
+
+  <section class="band">
+    <p class="headnote">The other half
+      <em>Checking answers against a stale library achieves very little.</em>
+    </p>
+    <div class="flow">
+      <h2>Checking the library as well as the answer</h2>
+      <p>
+        Every tool of this kind checks the answer against the retrieved passages, which
+        assumes that those passages are faithful copies of the real source, and quite
+        often they are not.
+      </p>
+      <p>
+        Documents get amended, scrapers break quietly, and a parser can drop the last
+        three subsections of a section without anything raising an alarm, because a
+        system that indexed 43 of 45 sections looks identical from the outside to one
+        that indexed all 45, at least until somebody happens to ask about the missing
+        two. A grounding gate that is working perfectly will still certify an answer
+        against a passage that no longer matches the law.
+      </p>
+      <p>
+        For that reason Bearout also verifies the library itself against the
+        authoritative source. Ontario publishes its statutes and regulations through
+        a machine-readable interface, and the corpus is checked against that interface in
+        three layers, the later ones catching classes of failure the earlier ones
+        cannot see.
+      </p>
+
+      <ul class="layers">
+        <li>
+          <span class="tier">L1</span>
+          <p><strong>Has the source changed?</strong> Re-fetch the official text, rebuild
+             the exact passage the system would store today, and compare it against what
+             is currently stored. Any difference means that either the law moved or the
+             parser did.</p>
+        </li>
+        <li>
+          <span class="tier">L2</span>
+          <p><strong>Did we read it correctly?</strong> Re-extract the document with a
+             second and deliberately different mechanism, so that every stored passage
+             must also appear in that independent reading. If the same parser were used
+             to check its own work, a consistent bug would pass every time, which is why
+             the second reader shares none of the first one&rsquo;s machinery.</p>
+        </li>
+        <li>
+          <span class="tier">L3</span>
+          <p><strong>Is anything missing or invented?</strong> Build an independent
+             inventory of every section in the official text and compare it against the
+             library in both directions, looking for sections the source has that the
+             library lacks as well as sections the library holds that the source no
+             longer shows.</p>
+        </li>
+      </ul>
+
+      <p>
+        The most recent run against the warranty prototype&rsquo;s corpus verified 418
+        of 418 sections across the nine Ontario statutes and regulations its answers
+        relied on, comparing each stored section against the official text published
+        through the province&rsquo;s e-Laws service. A perfect score in one run would
+        not mean much on its own. The check is built to run on a schedule, so it would
+        flag the day the stored corpus stopped matching the official text.
+      </p>
+    </div>
+  </section>
+
+  <section class="band">
+    <p class="headnote">The central question
+      <em>A checker whose own accuracy is unknown offers limited assurance.</em>
+    </p>
+    <div class="flow">
+      <h2>How often the gate itself is wrong</h2>
+      <p>
+        The gate&rsquo;s judgements are themselves made by a language model, and language
+        models are sometimes wrong, so the obvious question is how often the gate is
+        wrong and in which direction it errs. Comparable tools seldom answer that
+        question.
+      </p>
+      <p>
+        There are exactly two ways for the gate to be wrong, and they are not equally
+        serious. Airport screening offers a familiar comparison, in that one kind of
+        mistake confiscates a harmless water bottle and wastes everyone&rsquo;s time,
+        while the other kind lets something dangerous through.
+      </p>
+
+      <div class="errors">
+        <div class="error-cell is-danger">
+          <span class="error-rate">2.4%</span>
+          <h3>False pass</h3>
+          <p>An unsupported claim slipped through and reached the reader, who has no way
+             of telling it apart from the sourced material around it.</p>
+          <span class="tag">the safety number</span>
+        </div>
+        <div class="error-cell is-cost">
+          <span class="error-rate">20.2%</span>
+          <h3>False strip</h3>
+          <p>A perfectly good sentence was removed for no reason, leaving the reader with
+             a thinner answer than the sources actually support.</p>
+          <span class="tag">the price paid for it</span>
+        </div>
+      </div>
+
+      <p class="figure-caption">
+        Measured on a sealed set of 474 sentences, each labelled with the verdict a
+        correct gate would give it, supported or unsupported, so the gate&rsquo;s
+        decisions can be marked against a known answer. For the 153 real sentences the
+        system produced, that label was decided by majority vote of three independent
+        AI judges, separate from the judge being measured; the rest were constructed so
+        their labels are known by design. The rates work
+        out to roughly one supported sentence in five removed unnecessarily and roughly
+        one unsupported claim in forty getting through.
+      </p>
+
+      <p>
+        The gate is intentionally configured to be wrong in the safe direction far more often than in the harmful one.
+        The judge is instructed to answer
+        &ldquo;unsupported&rdquo; whenever it is in doubt, which is where the over-caution comes
+        from, because a missing sentence is a smaller failure than a wrong one in this
+        particular domain. Rewording that
+        instruction moves both rates together rather than improving either one alone. A
+        different domain would want a different point on that trade, and anyone
+        thinking about using this package can see where this one sits before adopting it.
+      </p>
+      <p>
+        Comparable figures are also hard to find. Several major
+        vendors ship this class of checker, and some of them publish scores on public
+        benchmarks, but a benchmark answers a different question, namely how a detector
+        ranks against other detectors on someone else&rsquo;s examples rather than how
+        often <em>this</em> gate, running on <em>this</em> corpus, removes a sentence it
+        should have kept.
+      </p>
+
+      <p class="pull">
+        A grounding checker with no published error rate is asking to be trusted on
+        nothing more than its own say-so, and an unflattering number is not a reason to
+        withhold anything, since the unflattering numbers are the ones that make a
+        disclosure worth reading.
+      </p>
+    </div>
+  </section>
+
+  <section class="band">
+    <p class="headnote">Method
+      <em>Five practices, each closing off a particular way of fooling yourself.</em>
+    </p>
+    <div class="flow">
+      <h2>How the measurement is kept reliable</h2>
+      <p>
+        A measurement is only as trustworthy as the method behind it, and when you
+        measure your own work it is easy to make mistakes that are biased in favour of the result. Each
+        of the five practices below exists to block one specific mistake of that kind. They were applied here to the warranty
+        prototype&rsquo;s numbers, but nothing about them is particular to that project.
+        The published rates describe one judge on one corpus, and anyone adopting the
+        package on a different corpus will need to run the same measurement themselves,
+        with the same discipline, for their own number to mean anything.
+      </p>
+
+      <ol class="method">
+        <li>
+          <h3>The test set is sealed</h3>
+          <p>
+            The 474 sentences are frozen, and a fingerprint of their content identifies
+            the exact set behind every published number, so nobody can quietly swap or
+            reword a test item without the change being visible. The sentences are
+            never published and never used to tune the system, for the same reason an
+            exam stops measuring anything once the students have seen the answer key.
+            What is published is the methodology, the per-item verdicts, and the
+            results, and that is enough for somebody outside the project to recompute
+            the rates without ever seeing a sentence.
+          </p>
+        </li>
+        <li>
+          <h3>The labels came from blind judges, not from the system</h3>
+          <p>
+            The real sentences in the set were labelled by majority vote of three
+            independent AI judges that could not see what the system had decided, and
+            disagreements between them were recorded rather than smoothed over, with
+            five of the 153 coming back split two to one. A stricter second-pass audit
+            then re-checked every label, the ones it contested are set aside for expert
+            review, and a label that changes produces a new fixture version rather than
+            a quiet edit. The trap this avoids is grading an answer sheet you wrote
+            yourself. For this corpus, three independent judges in agreement were
+            considered sufficient, and nothing in the method requires the labellers to
+            be models, so an adopter who wants human labels can run the same review
+            with people.
+          </p>
+        </li>
+        <li>
+          <h3>Hard cases were constructed on purpose</h3>
+          <p>
+            More than half of the set consists of
+            sentences that have been deliberately corrupted in exactly one way, whether
+            by a changed number, a wrong section reference, an inverted condition, an
+            added qualifier, a swapped actor, or a different outcome. These are the
+            near-misses a lazy checker waves through.
+          </p>
+        </li>
+        <li>
+          <h3>Changes are declared before they are measured</h3>
+          <p>
+            Before any modification is tested, the design and the standard it will have
+            to meet are written down and committed. Deciding after the fact what counts
+            as success is how a disappointing result gets rewritten into a promising one,
+            and writing the bar down in advance makes that move impossible to perform
+            quietly.
+          </p>
+        </li>
+        <li>
+          <h3>Only two attempts are allowed</h3>
+          <p>
+            Each candidate design gets at most two tuning passes against the test set,
+            and that limit is fixed in advance. Given unlimited attempts almost anything
+            will eventually produce a good-looking number, since a design that is retuned
+            often enough stops being tested by the set and starts being fitted to it.
+          </p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="band">
+    <p class="headnote">The method working
+      <em>The more elegant design lost on measurement and was dropped.</em>
+    </p>
+    <div class="flow">
+      <h2>A redesign that failed</h2>
+      <p>
+        Checking a whole sentence at once has an obvious weakness, in that a sentence can
+        carry five separate facts and a single shaky clause will condemn the other four
+        along with it. The natural fix is to break each sentence into individual claims,
+        check those separately, and rewrite the answer without the failed ones instead of
+        deleting whole sentences. That gives the judge smaller questions and the reader
+        tidier output, and it was worth testing properly.
+      </p>
+      <p>
+        It was declared in advance, built, and measured against the same sealed set.
+      </p>
+
+      <div class="figure scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Design</th>
+              <th scope="col" class="num">Good sentences cut</th>
+              <th scope="col" class="num">Bad claims passed</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="is-shipped">
+              <td>Whole-sentence checking <span class="qual">shipped</span></td>
+              <td class="num">20.5%</td>
+              <td class="num">2.1%</td>
+            </tr>
+            <tr>
+              <td>Claim-by-claim, first attempt <span class="qual">rejected</span></td>
+              <td class="num">52.4%</td>
+              <td class="num">2.1%</td>
+            </tr>
+            <tr>
+              <td>Claim-by-claim, second attempt <span class="qual">rejected, cap reached</span></td>
+              <td class="num">41.1%</td>
+              <td class="num">1.7%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="figure-caption">
+        All three runs were scored against the original label set, so the designs are
+        compared on the same ground. That is why the shipped design reads 20.5 and 2.1
+        here rather than the 20.2 and 2.4 given earlier, which are the same verdicts
+        rescored after two labels were corrected. Every figure is recomputable from the
+        per-item results published alongside the code.
+      </p>
+
+      <p>
+        The more elegant design removed roughly twice as many good sentences as the one
+        it was meant to replace, and it was not shipped.
+      </p>
+      <p>
+        The reason it failed is that a sentence survives
+        only if <em>all</em> of its claims survive, so splitting one sentence into four
+        claims means needing four correct judgements where one would previously have
+        done, and errors accumulate across them rather than cancelling out. That
+        arrangement only pays off if judging a small claim is substantially more reliable
+        than judging a whole sentence, and the measurement showed that it is not. A claim
+        pulled out of its surrounding sentence also loses the context that made it
+        interpretable, which introduces mistakes of its own.
+      </p>
+      <p>
+        The redesign did fix the specific example that had motivated the whole effort, a
+        case that had been irritating for weeks in which the old approach deleted a
+        plainly correct sentence. Across all 474 items, however, it remained roughly twice as destructive. The
+        compelling example pointed in one direction and the measurement pointed in the
+        other, and the measurement was allowed to decide.
+      </p>
+      <p>
+        The rejected code ships in the repository, not as a feature but in a folder
+        marked as evidence, alongside its declared standard, its results, and the
+        post-mortem. An account of a failed design is easier to believe when the failure
+        itself can be run.
+      </p>
+    </div>
+  </section>
+
+  <section class="band">
+    <p class="headnote">Limits
+      <em>What the project does not claim.</em>
+    </p>
+    <div class="flow">
+      <h2>Boundaries and caveats</h2>
+      <p>
+        <strong>Per-sentence checking is not novel.</strong> Several commercial products
+        do something similar, and at least one open-source library does as well. What is
+        less common is refusing by default rather than returning a score and leaving the
+        policy to the caller, and publishing the checker&rsquo;s own error rates
+        alongside it. The part that appears to be uncontested is verifying the library
+        against its authoritative source.
+      </p>
+      <p>
+        <strong>The numbers describe one domain and one judge.</strong> They were
+        measured on consumer legal information, with a specific model, using specific
+        prompt text, and changing the wording of the judge&rsquo;s instructions moves the
+        operating point. The figures show that this kind of measurement is possible and
+        worth doing, but nobody inherits these particular rates by installing the
+        package.
+      </p>
+      <p>
+        <strong>The judge is replaceable, and probably should be replaced.</strong> The
+        judge behind the rates above is a large general-purpose model prompted to
+        verify, and the checking step sits behind a deliberately small interface so
+        that something better fitted can take its place. The most promising candidate
+        is a small open-weight model trained specifically for this verification task,
+        which is the most likely route to a lower false-strip rate. An off-the-shelf
+        detector measured on the same fixture missed nearly a third of the
+        fabrications, so the training would need to be on material like this. Any
+        replacement judge is a different operating point and would need its own
+        measurement.
+      </p>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="flow">
+      <p class="closer">
+        Bearout is an open-source demonstration of these mechanisms, extracted 
+        from the prototype they were built in and released under the Apache 2.0 licence. 
+        The Python package holds the gate, the corpus verifier, their test suites, the 
+        published results, and the experiment that failed. It is hand-rolled on the 
+        standard library rather than built on LangChain, LlamaIndex, or any other LLM 
+        framework, the core installs with no dependencies at all, and the judge sits 
+        behind a single small protocol that any backend can implement. None of it claims 
+        to make a system hallucination-free. What it claims is narrower and checkable, 
+        which is that every sentence either survives verification against its cited 
+        source or is suppressed, and that the verifier&rsquo;s own error rates are measured
+        and published.
+      </p>
+    </div>
+  </section>
+
+</article>

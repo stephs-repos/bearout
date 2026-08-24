@@ -29,7 +29,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from substantiate.llm import ChatLLM
+from bearout.llm import ChatLLM
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +165,7 @@ async def verify_sentence(sentence: str, sources_block: str, verifier: ChatLLM) 
             temperature=0.0,
         )
     except Exception as exc:  # noqa: BLE001 — fail closed: unverifiable == unsupported
-        logger.warning("substantiate: verifier failed (%s); treating sentence as unsupported", exc)
+        logger.warning("bearout: verifier failed (%s); treating sentence as unsupported", exc)
         return False
     return (result.get("content") or "").strip().upper().startswith("SUPPORTED")
 
@@ -211,7 +211,7 @@ async def validate_grounding(
     grounded = bool(kept) and (len(kept) / len(sentences)) >= min_keep_ratio
     if removed:
         logger.info(
-            "substantiate: removed %d/%d sentence(s) as unsupported",
+            "bearout: removed %d/%d sentence(s) as unsupported",
             len(removed),
             len(sentences),
         )

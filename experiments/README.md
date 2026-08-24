@@ -3,7 +3,7 @@
 Designs that were measured and **rejected**. Kept as evidence so every number in
 the project's write-ups can be checked against the run that produced it.
 
-Nothing here is part of the installed package. `pip install substantiate` gives
+Nothing here is part of the installed package. `pip install bearout` gives
 you one gate.
 
 - [`claim-decomposition/`](claim-decomposition/) — decompose sentences into atomic

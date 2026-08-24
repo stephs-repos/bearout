@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from substantiate.fidelity.sources import elaws
-from substantiate.fidelity.sources.elaws import (
+from bearout.fidelity.sources import elaws
+from bearout.fidelity.sources.elaws import (
     StatuteSection,
     elaws_api_url,
     fetch_api_content,

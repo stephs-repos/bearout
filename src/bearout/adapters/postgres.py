@@ -1,6 +1,6 @@
 """Reference CorpusReader for a Postgres-backed corpus (e.g. pgvector).
 
-Requires the ``pgvector`` extra: ``pip install substantiate[pgvector]``.
+Requires the ``pgvector`` extra: ``pip install bearout[pgvector]``.
 
 The reader is read-only and query-parameterized: you supply the SQL that
 maps a ``doc_id`` to ``(section_id, chunk_text)`` rows for your schema.
@@ -29,7 +29,7 @@ def postgres_corpus_reader(conninfo: str, sql: str) -> Callable[[str], dict[str,
         import psycopg
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "The Postgres corpus reader needs psycopg: pip install substantiate[pgvector]"
+            "The Postgres corpus reader needs psycopg: pip install bearout[pgvector]"
         ) from exc
 
     def read(doc_id: str) -> dict[str, str]:

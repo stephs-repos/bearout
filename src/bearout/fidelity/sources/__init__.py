@@ -2,5 +2,5 @@
 
 First adapter: Ontario's e-Laws JSON API (``elaws``).  An adapter
 contributes two things — an async fetch of the official markup, and a
-parser from that markup to :class:`~substantiate.fidelity.sources.elaws.StatuteSection`.
+parser from that markup to :class:`~bearout.fidelity.sources.elaws.StatuteSection`.
 """
