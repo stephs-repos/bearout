@@ -189,8 +189,13 @@ that you should re-measure on your own fixture.
 
 ## Quickstart
 
+The gate does not depend on any model vendor. It takes an object with one async
+`chat()` method, so the judge can be a frontier API, a local model, or a trained
+detector. `bearout[anthropic]` is one reference adapter, not a requirement.
+
 ```bash
-pip install 'bearout[anthropic]'
+pip install bearout                # the gate and the corpus verifier, no dependencies
+pip install 'bearout[anthropic]'   # optional: the reference judge adapter
 export ANTHROPIC_API_KEY=...
 ```
 
@@ -225,6 +230,56 @@ to a dated snapshot and run at temperature 0, so a default run is the configurat
 those numbers describe. Pass `model=` to use a different judge, and re-measure
 before relying on the published rates, because a different judge is a different
 operating point.
+
+### Any model can be the judge
+
+The whole contract is one method. The gate calls it once per sentence and reads
+`content`; nothing else about the backend matters, and there is no vendor SDK
+anywhere in the core package.
+
+```python
+class ChatLLM(Protocol):
+    async def chat(
+        self,
+        *,
+        system_prompt: str,
+        user_message: str,
+        temperature: float | None = None,
+        cache_prefix: str | None = None,
+    ) -> dict[str, Any]: ...   # must contain {"content": "<the reply>"}
+```
+
+`cache_prefix` is the sources block, passed separately because it is identical
+across every sentence of an answer, so a backend that supports prompt caching
+pays for it once. A backend that doesn't can simply prepend it. `temperature` is
+advisory; ignore it if your model rejects sampling parameters.
+
+An OpenAI judge is the whole adapter:
+
+```python
+from openai import AsyncOpenAI
+
+class OpenAIChat:
+    def __init__(self, model: str = "gpt-4o-mini"):
+        self._client, self._model = AsyncOpenAI(), model
+
+    async def chat(self, *, system_prompt, user_message, temperature=None, cache_prefix=None):
+        response = await self._client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"{cache_prefix or ''}{user_message}"},
+            ],
+            temperature=temperature or 0.0,
+        )
+        return {"content": response.choices[0].message.content}
+```
+
+Pass it in exactly as above: `validate_grounding(..., llm=OpenAIChat())`. A local
+model behind Ollama or vLLM is the same shape, as is a trained detector such as
+LettuceDetect or MiniCheck — map its label to the string `SUPPORTED` or
+`UNSUPPORTED` and return that as `content`. Whatever you plug in, the published
+rates no longer describe it, so measure your own before relying on any number.
 
 Sentence splitting is citation-aware, which is load-bearing rather than cosmetic.
 Naive splitting shatters `Reg. 892 s. 4.4(2)` into fragments like `892 s.`, which
