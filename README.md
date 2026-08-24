@@ -11,6 +11,9 @@ supported doesn't ship. Because a gate whose own accuracy is unknown is theatre,
 the gate's error rates are measured on a sealed, independently labelled fixture
 and published below.
 
+For the reasoning behind the design rather than the API, read
+[the introduction](https://stephs-repos.github.io/bearout/).
+
 Two components:
 
 - **The gate**, which verifies each sentence, fails closed, and abstains rather
