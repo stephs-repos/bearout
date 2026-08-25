@@ -246,7 +246,7 @@ class ChatLLM(Protocol):
         user_message: str,
         temperature: float | None = None,
         cache_prefix: str | None = None,
-    ) -> dict[str, Any]: ...   # must contain {"content": "<the reply>"}
+    ) -> dict[str, Any]: ...  # must contain {"content": "<the reply>"}
 ```
 
 `cache_prefix` is the sources block, passed separately because it is identical
@@ -258,6 +258,7 @@ An OpenAI judge is the whole adapter:
 
 ```python
 from openai import AsyncOpenAI
+
 
 class OpenAIChat:
     def __init__(self, model: str = "gpt-4o-mini"):
