@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bearout"
-version = "0.1.0"
+version = "0.0.1"
 description = "Fail-closed grounding for RAG: every sentence verified against its cited source, or suppressed. Verifier error rates measured and published."
 readme = "README.md"
 license = "Apache-2.0"
