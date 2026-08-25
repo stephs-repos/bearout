@@ -76,11 +76,23 @@ class TestFidelityOffline:
         assert "flagged: 0   findings: 0" in fidelity_output
 
     def test_each_injected_defect_is_caught(self, fidelity_output: str) -> None:
-        # One verdict per layer: L3 both directions, plus L1/L2 on the edit.
+        # One verdict per layer: L3 both directions, L1/L2 on the edit, L4 on
+        # the truncation.
         assert "[missing_in_corpus] s.9" in fidelity_output
         assert "[extra_in_corpus] s.99" in fidelity_output
         assert "[text_mismatch]" in fidelity_output
         assert "[containment_fail]" in fidelity_output
+        assert "[incomplete]" in fidelity_output
+
+    def test_the_truncation_is_caught_by_coverage_and_not_by_containment(
+        self, fidelity_output: str
+    ) -> None:
+        """The layer's whole reason to exist: a truncation is still a subset,
+        so containment has nothing to say about it."""
+        truncated = [line for line in fidelity_output.splitlines() if "stops short" in line]
+        assert truncated, "the truncated section is no longer reported incomplete"
+        sid = truncated[0].split("] s.")[1].split(":")[0]
+        assert f"[containment_fail] s.{sid}" not in fidelity_output
 
     def test_the_edit_lands_in_a_section_body_not_the_label(self, fidelity_output: str) -> None:
         # A label-only edit would demonstrate a weaker failure than amendment

@@ -41,6 +41,7 @@ from bearout.fidelity.spec import DocSpec
 from bearout.fidelity.verify import (
     FIDELITY_VERDICTS,
     SectionFinding,
+    section_sort_key,
     verify_doc,
 )
 
@@ -125,13 +126,21 @@ def report(
                         v: sum(1 for f in findings if f.verdict == v)
                         for v in sorted({f.verdict for f in findings})
                     },
+                    # A list per section: one section can earn more than one
+                    # finding (a truncated chunk is both `incomplete` and, once
+                    # the source moves on, `text_mismatch`), and keying a dict
+                    # by section id silently kept only the last of them.
                     "sections": {
-                        f.section_id: {
-                            k: v
-                            for k, v in asdict(f).items()
-                            if k not in ("doc_id", "section_id") and v
-                        }
-                        for f in findings
+                        sid: [
+                            {
+                                k: v
+                                for k, v in asdict(f).items()
+                                if k not in ("doc_id", "section_id") and v
+                            }
+                            for f in findings
+                            if f.section_id == sid
+                        ]
+                        for sid in sorted({f.section_id for f in findings}, key=section_sort_key)
                     },
                 }
                 for doc_id, findings in per_doc.items()

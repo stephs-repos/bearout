@@ -72,6 +72,61 @@ class StatuteSection:
     text: str
 
 
+@dataclass(frozen=True)
+class ParseAnomaly:
+    """A paragraph the parser could not place with confidence.
+
+    ``kind`` is ``"unmatched_section_lead"``: a paragraph the source
+    classes as ``p.section`` whose text does not begin with a section
+    number.  Two things produce it — a collapsed revoked range
+    (``"5.3, 5.4 Revoked: ..."``) and a continuation paragraph the
+    source mis-classes — and the parser cannot tell them apart, so it
+    reports rather than guesses.
+
+    ``kept_with`` is the ``section_id`` the text was folded into, or
+    ``None`` when no section was open and the text was dropped.  A
+    ``None`` here is the parser's only remaining lossy path.
+    """
+
+    kind: str
+    text: str
+    kept_with: str | None
+
+
+@dataclass(frozen=True)
+class ParsedDocument:
+    """Parser output together with everything it could not place.
+
+    Callers that must not ingest a partial document use
+    :func:`bearout.fidelity.spec.parse_for_ingest`, which turns a
+    non-empty ``anomalies`` into a :class:`ParseAnomalyError`.
+    """
+
+    sections: list[StatuteSection]
+    anomalies: list[ParseAnomaly]
+
+
+class ParseAnomalyError(ValueError):
+    """Raised when a document is parsed for ingest and the parser could
+    not place every paragraph.
+
+    A corpus built from a partial parse reads as complete law, which is
+    worse than one with a visible gap: the reader cannot see what is
+    missing, and neither can a verifier that only compares what is
+    there.
+    """
+
+    def __init__(self, anomalies: list[ParseAnomaly]) -> None:
+        self.anomalies = anomalies
+        detail = "; ".join(
+            f"{a.kind} (kept_with={a.kept_with}): {a.text[:80]!r}" for a in anomalies
+        )
+        super().__init__(
+            f"{len(anomalies)} unplaceable paragraph(s): {detail}. Review them; if the\n"
+            "placement shown is correct, ingest via parse_statute_document() instead."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -134,8 +189,8 @@ class _ElawsParser(HTMLParser):
             self._cur_buf.append(data)
 
 
-def parse_statute_html(html: str) -> list[StatuteSection]:
-    """Parse e-Laws document markup into a list of :class:`StatuteSection`.
+def parse_statute_document(html: str) -> ParsedDocument:
+    """Parse e-Laws document markup into sections plus parse anomalies.
 
     Walks ``<p>`` elements in document order, tracking the current
     topic group + headnote, and emits one ``StatuteSection`` per
@@ -146,11 +201,17 @@ def parse_statute_html(html: str) -> list[StatuteSection]:
     * Missing topic groups (regulations).
     * Missing headnotes (regulations and some sections).
     * Footnote / amendment paragraphs (filtered by class).
+
+    Anything the parser cannot place is reported in
+    :attr:`ParsedDocument.anomalies` rather than dropped silently, so a
+    caller can refuse to ingest a partial document
+    (:func:`bearout.fidelity.spec.parse_for_ingest`).
     """
     p = _ElawsParser()
     p.feed(html)
 
     sections: list[StatuteSection] = []
+    anomalies: list[ParseAnomaly] = []
     topic_group: str | None = None
     pending_heading: str | None = None
     cur_section_id: str | None = None
@@ -200,18 +261,23 @@ def parse_statute_html(html: str) -> list[StatuteSection]:
             pending_heading = text
             continue
         if "section" in cls_norm and "subsection" not in cls_norm:
-            # Start of a new section — flush any current one.
-            _flush_current()
             m = SECTION_LEAD_RE.match(text)
             if not m:
-                # Defensive: paragraph looks like a section by class but
-                # doesn't match the leading-number pattern (collapsed
-                # revoked/repealed ranges like "5.3, 5.4 Revoked: ...").
-                # Skip rather than misattribute body content.
+                # Classed as a section start but carrying no leading section
+                # number.  Test this BEFORE flushing: closing the open section
+                # here would discard this paragraph AND every one after it up
+                # to the next recognised section, and a section truncated
+                # mid-sentence still reads as complete law.  Fold the text into
+                # the section it follows and report it instead.
                 logger.warning(
                     "elaws: p.section text does not match section pattern: %r", text[:80]
                 )
+                anomalies.append(ParseAnomaly("unmatched_section_lead", text, cur_section_id))
+                if cur_section_id is not None:
+                    cur_section_buf.append(text)
                 continue
+            # A real section start — now close the previous one.
+            _flush_current()
             cur_section_id = m.group("num")
             cur_section_heading = pending_heading
             cur_section_topic = topic_group
@@ -231,7 +297,17 @@ def parse_statute_html(html: str) -> list[StatuteSection]:
             cur_section_buf.append(text)
 
     _flush_current()
-    return sections
+    return ParsedDocument(sections=sections, anomalies=anomalies)
+
+
+def parse_statute_html(html: str) -> list[StatuteSection]:
+    """The sections of :func:`parse_statute_document`, anomalies discarded.
+
+    The verifier reads the corpus through this: its job is to report
+    divergence, not to refuse to look at a document that parses badly.
+    Ingest should use :func:`bearout.fidelity.spec.parse_for_ingest`.
+    """
+    return parse_statute_document(html).sections
 
 
 # ---------------------------------------------------------------------------
@@ -290,8 +366,12 @@ async def fetch_api_content(url: str, *, timeout_ms: int = 60_000) -> str | None
 
 __all__ = [
     "SECTION_LEAD_RE",
+    "ParseAnomaly",
+    "ParseAnomalyError",
+    "ParsedDocument",
     "StatuteSection",
     "elaws_api_url",
     "fetch_api_content",
+    "parse_statute_document",
     "parse_statute_html",
 ]

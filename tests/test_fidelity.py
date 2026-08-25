@@ -15,8 +15,14 @@ import pytest
 
 import bearout.fidelity.run as run
 import bearout.fidelity.verify as vsf
-from bearout.fidelity.sources.elaws import parse_statute_html
-from bearout.fidelity.spec import DocSpec, apply_section_filter, chunk_text, section_label
+from bearout.fidelity.sources.elaws import ParseAnomalyError, parse_statute_html
+from bearout.fidelity.spec import (
+    DocSpec,
+    apply_section_filter,
+    chunk_text,
+    parse_for_ingest,
+    section_label,
+)
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -32,7 +38,13 @@ OREG = DocSpec(
     url="https://www.ontario.ca/laws/regulation/210242",
     fixture_filename="oreg-242-21.html",
 )
-ROSTER = [SYNTH, OREG]
+TRUNC = DocSpec(
+    doc_id="test.truncating-act",
+    title="Truncating Act, 2026",
+    url="https://www.ontario.ca/laws/statute/00x01",
+    fixture_filename="truncating-act.html",
+)
+ROSTER = [SYNTH, OREG, TRUNC]
 
 
 def _fixture_html(spec: DocSpec) -> str:
@@ -79,6 +91,37 @@ class TestSpec:
         )
         with pytest.raises(ValueError, match="9999"):
             apply_section_filter(spec, parse_statute_html(synth_html))
+
+
+class TestParseForIngest:
+    """The loud ingest entry point.  A corpus with a hidden gap reads as
+    complete law, so ingest refuses a document the parser could not fully
+    place instead of storing its best guess."""
+
+    def test_clean_document_parses(self):
+        sections = parse_for_ingest(SYNTH, _fixture_html(SYNTH))
+        assert [s.section_id for s in sections] == ["1", "2", "3", "4"]
+
+    def test_unplaceable_paragraph_raises(self):
+        with pytest.raises(ParseAnomalyError) as exc:
+            parse_for_ingest(TRUNC, _fixture_html(TRUNC))
+        assert exc.value.anomalies[0].kind == "unmatched_section_lead"
+        assert "because the worker has acted in compliance" in str(exc.value)
+
+    def test_still_enforces_the_section_filter(self):
+        spec = DocSpec(
+            doc_id=SYNTH.doc_id,
+            title=SYNTH.title,
+            url=SYNTH.url,
+            section_filter=frozenset({"1", "9999"}),
+        )
+        with pytest.raises(ValueError, match="9999"):
+            parse_for_ingest(spec, _fixture_html(SYNTH))
+
+    def test_the_verifier_still_parses_what_ingest_refuses(self):
+        """verify_doc's job is to report divergence, not to refuse to look
+        at a document that parses badly."""
+        assert parse_statute_html(_fixture_html(TRUNC))
 
 
 class TestSplitLabel:
@@ -231,6 +274,114 @@ class TestL2:
         assert all("stable-parser-bug signature" in f.detail for f in fails)
 
 
+class TestL4:
+    """Coverage.  L1 compares the parser against a rebuild by the same
+    parser and L2 asks whether stored text is a SUBSET of the official
+    text; a truncated chunk satisfies both.  Only this layer asks whether
+    the official text is COVERED."""
+
+    @pytest.mark.parametrize("spec", ROSTER, ids=lambda s: s.doc_id)
+    def test_faithful_corpus_has_no_coverage_gap(self, spec):
+        html = _fixture_html(spec)
+        findings = vsf.verify_doc(spec, html, faithful_corpus(spec, html))
+        assert [f.verdict for f in findings] == ["ok"] * len(findings)
+
+    def _truncated(self, corpus, sid, cut_at):
+        label, body = vsf.split_label(corpus[sid])
+        out = dict(corpus)
+        out[sid] = f"{label}\n\n{body.split(cut_at)[0].strip()}"
+        return out
+
+    def test_truncated_chunk_is_incomplete_even_though_contained(self, synth_html, synth_corpus):
+        """The blind spot, stated as a test: a truncation is still a
+        subset, so containment passes and only coverage catches it."""
+        corpus = self._truncated(synth_corpus, "1", "(2)")
+        findings = vsf.verify_doc(SYNTH, synth_html, corpus)
+        assert not any(f.verdict == "containment_fail" for f in findings)
+        gaps = [f for f in findings if f.verdict == "incomplete"]
+        assert [f.section_id for f in gaps] == ["1"]
+        assert "implied promise" in gaps[0].detail
+        assert "the chunk for s.1 stops short" in gaps[0].detail
+
+    def test_a_truncated_section_is_never_also_reported_ok(self, synth_html, synth_corpus):
+        corpus = self._truncated(synth_corpus, "1", "(2)")
+        findings = vsf.verify_doc(SYNTH, synth_html, corpus)
+        assert not any(f.section_id == "1" and f.verdict == "ok" for f in findings)
+
+    def test_coverage_gap_is_a_fidelity_violation(self, synth_html, synth_corpus):
+        corpus = self._truncated(synth_corpus, "1", "(2)")
+        findings = vsf.verify_doc(SYNTH, synth_html, corpus)
+        assert run.exit_code({SYNTH.doc_id: findings}) == 5
+
+    def test_absent_section_is_reported_once_by_l3_not_twice_by_l4(self, synth_html, synth_corpus):
+        """An absent section has absent paragraphs.  Reporting that again as
+        a gap in the section BEFORE it would blame the wrong chunk."""
+        corpus = {k: v for k, v in synth_corpus.items() if k != "3"}
+        findings = vsf.verify_doc(SYNTH, synth_html, corpus)
+        assert [f.section_id for f in findings if f.verdict == "missing_in_corpus"] == ["3"]
+        assert not any(f.verdict == "incomplete" for f in findings)
+
+    def test_gap_is_blamed_on_the_section_that_should_hold_it(self, synth_html, synth_corpus):
+        """When a stored body is edited, its official paragraph goes
+        uncovered.  Blaming that on the section BEFORE it — the last one
+        that still matched — would point the reader at the wrong chunk."""
+        corpus = dict(synth_corpus)
+        label, body = vsf.split_label(corpus["2"])
+        corpus["2"] = f"{label}\n\nSomething else entirely."
+        findings = vsf.verify_doc(SYNTH, synth_html, corpus)
+        gaps = [f for f in findings if f.verdict == "incomplete"]
+        assert [f.section_id for f in gaps] == ["2"]
+        assert "stored body of s.2 does not contain them" in gaps[0].detail
+
+    def test_empty_corpus_is_reported_by_l3_alone(self, synth_html):
+        findings = vsf.verify_doc(SYNTH, synth_html, {})
+        assert {f.verdict for f in findings} == {"missing_in_corpus"}
+
+    def test_filtered_spec_skips_coverage(self, synth_html):
+        """A subset ingest leaves most of the document uncovered BY DESIGN,
+        so coverage is the wrong question to ask of it."""
+        spec = DocSpec(
+            doc_id=SYNTH.doc_id,
+            title=SYNTH.title,
+            url=SYNTH.url,
+            section_filter=frozenset({"1"}),
+        )
+        corpus = faithful_corpus(spec, synth_html)
+        findings = vsf.verify_doc(spec, synth_html, corpus)
+        assert not any(f.verdict == "incomplete" for f in findings)
+
+    def test_front_matter_is_not_required_to_be_covered(self, synth_html, synth_corpus):
+        """e-Laws renders a table of contents as paragraphs that carry no
+        `toc` class on real statutes; nothing before the first section
+        start is law text."""
+        html = synth_html.replace(
+            '<p class="heading1">',
+            '<p class="table">1 Definitions</p>\n<p class="heading1">',
+            1,
+        )
+        findings = vsf.verify_doc(SYNTH, html, synth_corpus)
+        assert not any(f.verdict == "incomplete" for f in findings)
+
+    def test_out_of_order_text_is_covered_not_a_gap(self, synth_html, synth_corpus):
+        """This layer reports omission, not disorder: text stored under a
+        different section is still in the corpus."""
+        corpus = dict(synth_corpus)
+        label, body = vsf.split_label(corpus["1"])
+        tail = "(2) A promise includes an implied promise."
+        corpus["1"] = f"{label}\n\n{body.replace(tail, '').strip()}"
+        corpus["4"] = f"{corpus['4']} {tail}"
+        findings = vsf.verify_doc(SYNTH, synth_html, corpus)
+        assert not any(f.verdict == "incomplete" for f in findings)
+
+    def test_coverage_paragraphs_start_at_the_first_section(self):
+        paras = vsf.body_paragraphs_for_coverage(_fixture_html(SYNTH))
+        assert paras[0].startswith("1 (1) In this Act")
+        assert not any("Definitions and Administration" == p for p in paras)
+
+    def test_document_with_no_sections_requires_no_coverage(self):
+        assert vsf.body_paragraphs_for_coverage("<p class='paragraph'>loose text</p>") == []
+
+
 @pytest.mark.parametrize("spec", ROSTER, ids=lambda s: s.doc_id)
 def test_inventory_agrees_with_parser_on_all_fixtures(spec):
     """The regex inventory and the HTMLParser must see the same section-id
@@ -267,6 +418,24 @@ class TestEndToEndOffline:
         doc = payload["docs"][SYNTH.doc_id]
         assert doc["counts"] == {"ok": len(synth_corpus)}
         assert set(doc["sections"]) == set(synth_corpus)
+
+    def test_report_keeps_every_finding_for_a_section(self, tmp_path, synth_corpus):
+        """One section can earn more than one finding — a truncated chunk is
+        both `incomplete` and `text_mismatch`.  Keying the JSON by section id
+        silently kept only the last of them."""
+        corpus = dict(synth_corpus)
+        label, body = vsf.split_label(corpus["1"])
+        corpus["1"] = f"{label}\n\n{body.split('(2)')[0].strip()}"
+        out = tmp_path / "fidelity.json"
+        rc = self._run(
+            {SYNTH.doc_id: corpus},
+            ["--doc-id", SYNTH.doc_id, "--from-fixture", "--json-out", str(out)],
+        )
+        assert rc == 5
+        sections = json.loads(out.read_text(encoding="utf-8"))["docs"][SYNTH.doc_id]["sections"]
+        verdicts = {f["verdict"] for f in sections["1"]}
+        assert verdicts == {"incomplete", "text_mismatch"}
+        assert sections["2"] == [{"verdict": "ok"}]
 
     def test_mutated_corpus_exits_five(self, synth_corpus):
         sid = sorted(synth_corpus)[0]

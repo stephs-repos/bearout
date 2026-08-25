@@ -50,15 +50,18 @@ Verifies a stored corpus of O. Reg. 242/21 against Ontario's e-Laws API, in two 
 
 **Pass 1** builds a faithful corpus through the real ingest contract (`chunk_text`, the single shared definition of a stored chunk, so ingest and verifier cannot drift apart). Every section verifies.
 
-**Pass 2** injects three defects that nothing else in a RAG stack would notice, because none of them change the *shape* of a retrieval result:
+**Pass 2** injects four defects that nothing else in a RAG stack would notice, because none of them change the *shape* of a retrieval result:
 
 | Injected | Caught by | Verdict |
 |---|---|---|
 | A section silently dropped | L3 — independent inventory | `missing_in_corpus` |
 | A cross-reference that no longer matches the source | L1 — exact rebuild, and L2 — independent re-extraction | `text_mismatch` + `containment_fail` |
 | A section the source no longer shows | L3 — inventory, other direction | `extra_in_corpus` |
+| A section stored truncated | L4 — coverage | `incomplete` |
 
-The double finding on the edited section is the interesting one. L1 says the stored text differs from what ingest would rebuild today. L2 says it isn't even a contiguous substring of a *second, independent* extraction. L1 alone cannot separate a real amendment from a parser bug — but L1-pass with L2-fail is the unambiguous signature of a parser bug that survived ingest, which is precisely what a checker re-using the same parser can never catch.
+The truncation is the one to watch. It draws no `containment_fail` at all, because containment asks whether the stored text is a *subset* of the official text and a truncation is still a subset. What is left is well-formed law that stops early, so it reads as complete: the qualifier that would have contradicted it is simply not there. Coverage is the only layer that asks whether the official text is covered rather than merely echoed.
+
+The double finding on the edited section is the other interesting one. L1 says the stored text differs from what ingest would rebuild today. L2 says it isn't even a contiguous substring of a *second, independent* extraction. L1 alone cannot separate a real amendment from a parser bug — but L1-pass with L2-fail is the unambiguous signature of a parser bug that survived ingest, which is precisely what a checker re-using the same parser can never catch.
 
 Both passes exit 0: the injected defects are the demonstration, not a failure of it. For the real exit-code contract (`0` clean, `2` fetch error, `5` fidelity violation, with `5` winning over `2`), see `bearout.fidelity.run`.
 

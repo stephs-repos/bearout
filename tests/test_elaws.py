@@ -15,6 +15,7 @@ from bearout.fidelity.sources.elaws import (
     StatuteSection,
     elaws_api_url,
     fetch_api_content,
+    parse_statute_document,
     parse_statute_html,
 )
 
@@ -55,6 +56,65 @@ class TestParserSyntheticAct:
         assert len(sections) == 10
         assert all(s.heading is None or isinstance(s.heading, str) for s in sections)
         assert all(s.text for s in sections)
+
+
+class TestParserUnmatchedSectionLead:
+    """A ``p.section`` paragraph with no leading section number.
+
+    Regression tests for a real defect: the parser closed the open
+    section BEFORE testing the lead-number pattern, so one unrecognised
+    paragraph discarded itself and every paragraph after it up to the
+    next recognised section.  On the live Occupational Health and Safety
+    Act that removed 4.8% of the statute — the whole penalty scheme of
+    s.66, and the "because the worker has acted in compliance" condition
+    that makes s.50 a reprisal provision rather than an absolute ban —
+    while every fidelity layer still reported the corpus ok.
+    """
+
+    def test_continuation_text_stays_with_its_section(self):
+        sections = parse_statute_html(_read("truncating-act.html"))
+        s1 = next(s for s in sections if s.section_id == "1")
+        assert "because the worker has acted in compliance with this Act." in s1.text
+
+    def test_paragraphs_after_the_unmatched_one_are_not_lost(self):
+        """The bug's real cost: not the unrecognised paragraph, but
+        everything following it."""
+        sections = parse_statute_html(_read("truncating-act.html"))
+        s1 = next(s for s in sections if s.section_id == "1")
+        assert "(2) A dismissal contrary to subsection (1) is void." in s1.text
+
+    def test_following_sections_still_parse(self):
+        sections = parse_statute_html(_read("truncating-act.html"))
+        assert [s.section_id for s in sections] == ["1", "2"]
+        assert sections[1].heading == "Penalties"
+        assert "$500,000" in sections[1].text
+
+    def test_anomaly_is_reported_with_the_section_it_was_folded_into(self):
+        doc = parse_statute_document(_read("truncating-act.html"))
+        assert len(doc.anomalies) == 1
+        anomaly = doc.anomalies[0]
+        assert anomaly.kind == "unmatched_section_lead"
+        assert anomaly.kept_with == "1"
+        assert anomaly.text == "because the worker has acted in compliance with this Act."
+
+    def test_text_before_any_section_is_reported_as_dropped(self):
+        """The one remaining lossy path: nothing is open to fold into, so
+        ``kept_with`` is None and an ingest can refuse the document."""
+        doc = parse_statute_document(
+            '<p class="section">Revoked: 2020, c. 1, s. 2.</p>'
+            '<p class="section">1 (1) The real first section.</p>'
+        )
+        assert [s.section_id for s in doc.sections] == ["1"]
+        assert [(a.kind, a.kept_with) for a in doc.anomalies] == [("unmatched_section_lead", None)]
+
+    def test_clean_documents_report_no_anomalies(self):
+        for name in ("synthetic-act.html", "oreg-242-21.html"):
+            assert parse_statute_document(_read(name)).anomalies == [], name
+
+    def test_parse_statute_html_is_the_sections_of_parse_statute_document(self):
+        for name in ("synthetic-act.html", "truncating-act.html"):
+            html = _read(name)
+            assert parse_statute_html(html) == parse_statute_document(html).sections
 
 
 class TestApiUrlMapping:

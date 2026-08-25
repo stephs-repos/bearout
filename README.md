@@ -290,7 +290,7 @@ observed case lost 18 of 25 "sentences" that way.
 ## Corpus fidelity
 
 A grounding gate is only as good as the corpus it grounds against, so the
-verifier runs three layers per document:
+verifier runs four layers per document:
 
 - **L1. Currency and parser drift.** Re-fetch the official text, rebuild the
   exact chunk ingest would store, compare per section.
@@ -298,6 +298,22 @@ verifier runs three layers per document:
   every stored body must appear as a contiguous substring of it. L1 pass + L2
   fail is the signature of a parser bug that survived ingest.
 - **L3. Silent drops.** Independent section inventory, compared both ways.
+- **L4. Coverage.** Every law-body paragraph of the official text must appear in
+  some stored chunk. L1 compares the parser against a rebuild by the same
+  parser, and L2 asks whether stored text is a *subset* of the official text —
+  a truncated section satisfies both. Only this layer asks the other direction.
+
+Fidelity is not completeness, and the three-layer version of this verifier
+checked only the first. It certified a corpus missing 4.8% of the Occupational
+Health and Safety Act, including the whole penalty scheme of s.66 and the
+condition that makes s.50 a reprisal provision rather than an absolute
+prohibition on dismissal. What remained was well-formed law that stopped early,
+which is the failure mode with no downstream defence: a grounding gate can
+refuse a claim the corpus does not support, but nothing downstream can raise a
+question the corpus has made unaskable.
+
+Ingest through `parse_for_ingest`, which refuses a document the parser could not
+fully place rather than storing its best guess.
 
 Ontario's e-Laws API is the first source adapter (`pip install 'bearout[fetchers]'`
 for the live fetch); the corpus side is a pluggable reader (Postgres reference

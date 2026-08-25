@@ -42,7 +42,13 @@ import re
 import sys
 from pathlib import Path
 
-from bearout.fidelity import DocSpec, SectionFinding, chunk_text, verify_doc
+from bearout.fidelity import (
+    DocSpec,
+    SectionFinding,
+    body_paragraphs_for_coverage,
+    chunk_text,
+    verify_doc,
+)
 from bearout.fidelity.sources.elaws import (
     SECTION_LEAD_RE,
     elaws_api_url,
@@ -117,8 +123,25 @@ def _bump_a_cross_reference(chunk: str) -> tuple[str, str, str] | None:
     return chunk[:body_start] + body[:start] + now + body[end:], was, now
 
 
-def inject_defects(corpus: dict[str, str]) -> tuple[dict[str, str], list[str]]:
-    """Introduce three realistic corpus defects; return it plus a description."""
+def _drop_the_last_paragraph(html: str, chunk: str) -> tuple[str, str] | None:
+    """Cut a stored chunk's body at its final paragraph boundary, if it has one.
+
+    Cutting on a paragraph boundary rather than mid-word is the point: the
+    result is not corrupt text, it is *less* text, still perfectly formed.
+    That is what makes a truncation the hardest defect for a checker to see.
+    """
+    sep = chunk.find("\n\n")
+    if sep == -1:
+        return None
+    body = chunk[sep + 2 :]
+    for paragraph in body_paragraphs_for_coverage(html):
+        if paragraph and body.endswith(f" {paragraph}"):
+            return chunk[: sep + 2] + body[: -(len(paragraph) + 1)].strip(), paragraph
+    return None
+
+
+def inject_defects(corpus: dict[str, str], html: str) -> tuple[dict[str, str], list[str]]:
+    """Introduce four realistic corpus defects; return it plus a description."""
     damaged = dict(corpus)
     notes: list[str] = []
 
@@ -152,7 +175,32 @@ def inject_defects(corpus: dict[str, str]) -> tuple[dict[str, str], list[str]]:
     damaged["99"] = "Phantom section — repealed upstream, still indexed here."
     notes.append("added a phantom s.99 (simulating a repealed section left behind)")
 
+    # 4. A section stored truncated. This is the defect the other layers are
+    #    blind to: containment asks whether the stored text is a SUBSET of the
+    #    official text, and a truncation is still a subset. What is left is
+    #    well-formed law that stops early, and a chunk that stops early reads
+    #    as complete — the condition, the exception or the penalty that would
+    #    have qualified it is simply not there to contradict anything.
+    for sid in sorted(damaged, key=lambda i: -len(damaged[i])):
+        if sid in flagged_so_far(notes):
+            continue
+        cut = _drop_the_last_paragraph(html, damaged[sid])
+        if cut is None:
+            continue
+        damaged[sid], dropped = cut
+        notes.append(
+            f"truncated s.{sid}, dropping its last paragraph "
+            f"({len(dropped)} chars) — a subset, so containment still passes"
+        )
+        break
+
     return damaged, notes
+
+
+def flagged_so_far(notes: list[str]) -> set[str]:
+    """Section ids already damaged by an earlier injection, so each defect
+    lands on its own section and the report stays readable."""
+    return set(re.findall(r"\bs\.(\d+(?:\.\d+)*)", " ".join(notes)))
 
 
 def report(findings: list[SectionFinding]) -> None:
@@ -240,10 +288,10 @@ async def main() -> int:
     print("=" * 68)
     report(verify_doc(spec, html, corpus))
 
-    damaged, notes = inject_defects(corpus)
+    damaged, notes = inject_defects(corpus, html)
     print()
     print("=" * 68)
-    print("PASS 2 — the same corpus, with three defects injected")
+    print("PASS 2 — the same corpus, with four defects injected")
     print("=" * 68)
     for note in notes:
         print(f"  · {note}")

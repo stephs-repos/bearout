@@ -3,13 +3,21 @@
 The verifier reconstructs the EXACT text your ingest stored — so the label
 and chunk construction live here, shared between your ingest pipeline and
 the verifier, and can never drift apart.
+
+Ingest through :func:`parse_for_ingest`: it refuses a document the parser
+could not fully place, on the principle that a corpus with a hidden gap is
+worse than no corpus, because it reads as complete law.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from bearout.fidelity.sources.elaws import StatuteSection
+from bearout.fidelity.sources.elaws import (
+    ParseAnomalyError,
+    StatuteSection,
+    parse_statute_document,
+)
 
 
 @dataclass(frozen=True)
@@ -62,4 +70,34 @@ def apply_section_filter(spec: DocSpec, sections: list[StatuteSection]) -> list[
     return kept
 
 
-__all__ = ["DocSpec", "apply_section_filter", "chunk_text", "section_label"]
+def parse_for_ingest(spec: DocSpec, html: str) -> list[StatuteSection]:
+    """Parse a document FOR INGEST, refusing anything the parser could not place.
+
+    The loud counterpart to
+    :func:`bearout.fidelity.sources.elaws.parse_statute_html`.  Two ways
+    a partial document is stopped from becoming a corpus:
+
+    * a paragraph the parser could not place raises
+      :class:`ParseAnomalyError`, and
+    * a ``section_filter`` id missing from the parse raises
+      ``ValueError`` (:func:`apply_section_filter`).
+
+    A caller who has reviewed the anomalies and accepts them ingests via
+    :func:`parse_statute_document` instead.  That is deliberately a
+    different call rather than a flag on this one, so accepting an
+    imperfect parse stays visible in the calling code rather than
+    becoming a default nobody revisits.
+    """
+    doc = parse_statute_document(html)
+    if doc.anomalies:
+        raise ParseAnomalyError(doc.anomalies)
+    return apply_section_filter(spec, doc.sections)
+
+
+__all__ = [
+    "DocSpec",
+    "apply_section_filter",
+    "chunk_text",
+    "parse_for_ingest",
+    "section_label",
+]

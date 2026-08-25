@@ -4,6 +4,14 @@
   paragraph class the e-Laws parser handles (toc, heading1, headnote,
   section, subsection, amendments, footnote, nested inline tags,
   entities).
+- `truncating-act.html` — a miniature act shaped like the real defect
+  this parser had: a continuation paragraph that e-Laws classes as
+  `p.section` but which carries no leading section number. Parsed
+  wrongly it truncates s.1 mid-clause, and what remains ("No employer
+  shall dismiss a worker, (a) ... (b) ...,") reads as an unconditional
+  prohibition — a stronger claim than the section makes. Corpus text
+  that is wrong in the confident direction is the failure this package
+  exists to prevent.
 - `oreg-242-21.html` — captured e-Laws JSON-API markup for O. Reg.
   242/21 (Mediation Prior to Notice of Decision) under the Ontario New
   Home Warranties Plan Act, from

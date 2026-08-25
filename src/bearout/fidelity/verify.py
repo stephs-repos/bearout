@@ -26,8 +26,18 @@ L3 — silent drops.  An independent section-id inventory (regex over
      (``missing_in_corpus``) and corpus sections the official text no
      longer shows (``extra_in_corpus``).
 
+L4 — coverage.  L1 compares stored text against a rebuild by the same
+     parser, and L2 asks whether stored text is a SUBSET of the official
+     text.  A truncated section satisfies both: it is byte-identical to
+     what that parser produces today, and a truncation is still a
+     subset.  L4 asks the other direction — is the official text
+     COVERED by what is stored — and reports law-body paragraphs that
+     reached no chunk (``incomplete``).  Fidelity is not completeness,
+     and only this layer measures the second one.
+
 Verdicts: ``ok`` / ``text_mismatch`` / ``missing_in_corpus`` /
-``extra_in_corpus`` / ``containment_fail`` / ``fetch_error``.
+``extra_in_corpus`` / ``containment_fail`` / ``incomplete`` /
+``fetch_error``.
 """
 
 from __future__ import annotations
@@ -45,7 +55,7 @@ from bearout.fidelity.sources.elaws import (
 from bearout.fidelity.spec import DocSpec, chunk_text
 
 FIDELITY_VERDICTS = frozenset(
-    {"text_mismatch", "missing_in_corpus", "extra_in_corpus", "containment_fail"}
+    {"text_mismatch", "missing_in_corpus", "extra_in_corpus", "containment_fail", "incomplete"}
 )
 
 
@@ -108,6 +118,126 @@ def independent_section_inventory(html: str) -> set[str]:
             if m:
                 inventory.add(m.group("num"))
     return inventory
+
+
+def body_paragraphs_for_coverage(html: str) -> list[str]:
+    """Law-body paragraphs a complete corpus must cover (the L4 haystack side).
+
+    Same declarative class-skip policy as L2, taken from the first
+    ``p.section`` onward.  Everything before the first section start is
+    front matter: e-Laws renders a statute's table of contents as
+    ``p.table`` rows that carry no ``toc`` class, and those are not law
+    text and belong in no chunk.
+
+    Deliberately parser-free — class names only, no lead-number regex —
+    so this layer shares no machinery with the parser it checks.
+    """
+    paras = [(cls.strip().lower(), text) for cls, text in strip_paragraphs(html) if text]
+    start = next(
+        (i for i, (cls, _) in enumerate(paras) if "section" in cls and "subsection" not in cls),
+        None,
+    )
+    if start is None:
+        return []
+    return [text for cls, text in paras[start:] if not _SKIP_CLASS_RE.search(cls)]
+
+
+def _within(key: tuple, lo: tuple | None, hi: tuple | None) -> bool:
+    """Is ``key`` strictly between the two section sort keys?  ``None`` is an
+    open bound (document start / document end)."""
+    return (lo is None or lo < key) and (hi is None or key < hi)
+
+
+def coverage_findings(
+    spec: DocSpec,
+    corpus: dict[str, str],
+    paragraphs: list[str],
+    *,
+    explained_by: set[str] | None = None,
+    max_detail_chars: int = 120,
+) -> list[SectionFinding]:
+    """L4 — every law-body paragraph must appear in some stored chunk.
+
+    Uncovered paragraphs are attributed to the section whose chunk should
+    have held them: a stored section sorting inside the gap when there is
+    one (its body was edited out from under them), otherwise the last
+    section that did cover a paragraph (its chunk stops short).  Two
+    deliberate silences:
+
+    * A paragraph found in the corpus but out of document order is
+      covered, not a gap.  This layer reports omission, not disorder.
+    * A run of uncovered paragraphs is dropped when a section L3 already
+      reported ``missing_in_corpus`` falls inside it (``explained_by``).
+      An absent section has absent paragraphs; saying so twice, the
+      second time blamed on the section before it, is worse than not
+      saying it.  What survives is text that vanished with no other
+      finding to explain it.
+    """
+    bodies = {sid: norm(split_label(text)[1]) for sid, text in corpus.items()}
+    order = sorted(bodies, key=section_sort_key)
+    everything_stored = "\n".join(bodies.values())
+    missing_keys = [section_sort_key(sid) for sid in (explained_by or set())]
+
+    owner: str | None = None
+    owner_idx = 0
+    runs: list[tuple[str | None, list[str], str | None]] = []
+    open_run: list[str] = []
+
+    def _close_run(next_owner: str | None) -> None:
+        nonlocal open_run
+        if open_run:
+            runs.append((owner, open_run, next_owner))
+            open_run = []
+
+    for text in paragraphs:
+        needle = norm(text)
+        if not needle:
+            continue
+        hit = owner if owner is not None and needle in bodies[owner] else None
+        if hit is None:
+            for i in range(owner_idx, len(order)):
+                if needle in bodies[order[i]]:
+                    hit, owner_idx = order[i], i
+                    break
+        if hit is not None:
+            _close_run(hit)
+            owner = hit
+        elif needle not in everything_stored:
+            open_run.append(text)
+    _close_run(None)
+
+    gaps: dict[tuple[str | None, str], list[str]] = {}
+    for before, texts, after in runs:
+        lo = section_sort_key(before) if before is not None else None
+        hi = section_sort_key(after) if after is not None else None
+        if any(_within(k, lo, hi) for k in missing_keys):
+            continue  # L3 already reported the absent section that owns this text
+        # Prefer a stored section that sorts INSIDE the gap: when s.2's body has
+        # been edited, its official paragraph goes uncovered, and blaming that on
+        # s.1 — the last section that still matched — points at the wrong chunk.
+        inside = [sid for sid in order if _within(section_sort_key(sid), lo, hi)]
+        key = (inside[0], "body") if inside else (before, "tail")
+        gaps.setdefault(key, []).extend(texts)
+
+    findings: list[SectionFinding] = []
+    for (sid, kind), missing in gaps.items():
+        chars = sum(len(t) for t in missing)
+        if sid is None:
+            where = "no stored section precedes them"
+        elif kind == "body":
+            where = f"the stored body of s.{sid} does not contain them"
+        else:
+            where = f"the chunk for s.{sid} stops short"
+        findings.append(
+            SectionFinding(
+                spec.doc_id,
+                sid if sid is not None else "*",
+                "incomplete",
+                f"{len(missing)} official paragraph(s), {chars} chars, reached no chunk "
+                f"({where}); first: {missing[0][:max_detail_chars]!r}",
+            )
+        )
+    return findings
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +322,7 @@ def verify_doc(
     *,
     max_diff_lines: int = 20,
 ) -> list[SectionFinding]:
-    """Run L3 -> L1 -> L2 for one document; one finding per section."""
+    """Run L3 -> L4 -> L1 -> L2 for one document; one finding per section."""
     findings: list[SectionFinding] = []
 
     sections = parse_statute_html(html)
@@ -244,6 +374,21 @@ def verify_doc(
                 "extra_in_corpus",
                 "in corpus but not in today's official text — repealed/renumbered "
                 "section or corpus contamination",
+            )
+        )
+
+    # --- L4: coverage of the official text by the corpus -------------------
+    # Runs before L1/L2 so a section whose chunk stops short is never also
+    # reported "ok".  Skipped when the spec restricts ingest to a subset:
+    # there, most of the document is uncovered BY DESIGN, and "does the
+    # corpus cover the document" is the wrong question to ask of it.
+    if spec.section_filter is None:
+        findings.extend(
+            coverage_findings(
+                spec,
+                corpus,
+                body_paragraphs_for_coverage(html),
+                explained_by={f.section_id for f in findings if f.verdict == "missing_in_corpus"},
             )
         )
 
@@ -304,6 +449,8 @@ def verify_doc(
 __all__ = [
     "FIDELITY_VERDICTS",
     "SectionFinding",
+    "body_paragraphs_for_coverage",
+    "coverage_findings",
     "expected_chunks",
     "independent_body_text",
     "independent_section_inventory",
