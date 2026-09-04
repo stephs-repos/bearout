@@ -172,6 +172,16 @@
     margin-top: 1.1rem;
   }
 
+  .links {
+    font-family: var(--mono);
+    font-size: var(--s--2);
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+    margin-top: 1.1rem;
+  }
+  .links a { color: var(--accent); }
+  .links .sep { margin: 0 0.6em; }
+
   /* ---- Masthead ---- */
 
   .masthead {
@@ -406,6 +416,9 @@
         every sentence of a drafted answer against the sources that answer is supposed
         to rest on, removes anything it cannot verify, and reports how often it gets
         that judgement wrong.
+      </p>
+      <p class="links">
+        <a href="https://pypi.org/project/bearout/">Package on PyPI</a><span class="sep" aria-hidden="true">&middot;</span><a href="https://github.com/stephs-repos/bearout">Source on GitHub</a><span class="sep" aria-hidden="true">&middot;</span><code>pip install bearout</code>
       </p>
 
       <div class="demo">
