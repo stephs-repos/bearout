@@ -12,7 +12,7 @@ from bearout.gate import (
 )
 from bearout.llm import ChatLLM
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 __all__ = [
     "ChatLLM",
