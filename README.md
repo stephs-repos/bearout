@@ -7,9 +7,9 @@
 bearout is an open-source demonstration of the anti-confabulation mechanisms
 built for a past project, a consumer legal-information prototype. Every sentence
 of a generated answer is checked against its cited sources, and what can't be
-supported doesn't ship. Because a gate whose own accuracy is unknown is theatre,
-the gate's error rates are measured on a sealed, independently labelled fixture
-and published below.
+supported never reaches the reader. Because a gate whose own accuracy is unknown
+is theatre, the gate's error rates are measured on a sealed, independently
+labelled fixture and published below.
 
 For the reasoning behind the design rather than the API, read
 [the introduction](https://stephs-repos.github.io/bearout/).
@@ -17,7 +17,7 @@ For the reasoning behind the design rather than the API, read
 Two components:
 
 - **The gate**, which verifies each sentence, fails closed, and abstains rather
-  than shipping a gutted answer.
+  than releasing a gutted answer.
 - **The corpus verifier**, which checks every stored chunk against the
   authoritative source (Ontario's e-Laws API) for currency drift, extraction
   fidelity, and silent drops, because grounding against a stale index is
@@ -85,24 +85,25 @@ and an anti-fishing cap of two tuning iterations, then measured:
 
 | Design | False strip | False pass |
 |---|---|---|
-| **sentence-level** (shipped) | **20.5%** | **2.1%** |
+| **sentence-level** (in use) | **20.5%** | **2.1%** |
 | claim decomposition, iteration 0 | 52.4% | 2.1% |
 | claim decomposition, iteration 1 | 41.1% | 1.7% |
 | MiniCheck-770M alone (off-the-shelf detector, same fixture) | 21.1% | 30.1% |
 
 All rows in this table are scored against **fixture v1 labels**, the version every
 one of these runs was executed against, so the designs are compared on identical
-ground. (The headline above uses the corrected v3 labels; under those, the shipped
-gate is 20.2/2.4 and claim iteration 1 is 41.5/2.4, and the ranking is unchanged.)
+ground. (The headline above uses the corrected v3 labels; under those, the gate
+in use is 20.2/2.4 and claim iteration 1 is 41.5/2.4, and the ranking is
+unchanged.)
 Every rate here, the MiniCheck row included, is recomputable from the per-item
 artifacts in
 [`experiments/claim-decomposition/artifacts/`](https://github.com/stephs-repos/bearout/tree/main/experiments/claim-decomposition/artifacts).
 
-The design failed twice and did not ship, and the structural reason generalizes
-beyond this domain. A sentence survives only if *all* its claims do, so the
-verdict is an AND over claims, and decomposition **multiplies** per-call noise
-unless per-claim accuracy far exceeds per-sentence accuracy, which measurement
-showed it does not.
+The design failed twice and was not adopted, and the structural reason
+generalizes beyond this domain. A sentence survives only if *all* its claims do,
+so the verdict is an AND over claims, and decomposition **multiplies** per-call
+noise unless per-claim accuracy far exceeds per-sentence accuracy, which
+measurement showed it does not.
 
 The design did cure the specific case that motivated it, and it was rejected
 anyway, because one convincing example is not an eval.
@@ -166,15 +167,15 @@ Notes, because several of these rows are easy to misread:
   to the source document it was extracted from.
 
 **bearout is not another eval library.** RAGAS and DeepEval score answers after
-the fact; this decides what ships. Two of the distinctions that motivated this
-project turned out to be weaker than assumed, and both are corrected above:
+the fact; this decides what is released. Two of the distinctions that motivated
+this project turned out to be weaker than assumed, and both are corrected above:
 per-sentence checking is common, and fail-closed-by-default is not unique
 either, since Guardrails raises by default. What survives is narrower. Most
 products in this space hand back a score and leave the policy to you; of those
 that do decide, none publishes how often its own decision is wrong in each
 direction — Vectara publishes precision and recall for HHEM, which is more than
 anyone else, and the detector models publish aggregate benchmark scores, but a
-false-strip and false-pass pair measured on the shipping configuration is not
+false-strip and false-pass pair measured on the released configuration is not
 something this list contains. The genuinely uncontested column is the last one:
 nothing here verifies that the corpus it grounds against still matches the
 authoritative source.
@@ -219,7 +220,7 @@ outcome = asyncio.run(
     )
 )
 
-print(outcome.grounded)  # False if too little survived; abstain, don't ship
+print(outcome.grounded)  # False if too little survived; abstain, don't release
 print(outcome.answer)  # surviving text ("" when not grounded)
 print(outcome.removed)  # exactly what was suppressed
 print(outcome.verdicts)  # (sentence, supported) for all of them; the audit trail
@@ -334,7 +335,7 @@ mechanism and an audit trail, and that is all it will ever claim.
 
 ## Status
 
-Alpha, extracted from a working prototype. The gate and corpus verifier ship with
+Alpha, extracted from a working prototype. The gate and corpus verifier come with
 their test suites. The next steps are a public-benchmark row (RAGTruth /
 LLM-AggreFact) so the numbers can be compared on shared ground, and a harness for
 measuring a judge against *your* labeled set.
