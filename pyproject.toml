@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bearout"
-version = "0.0.3"
+version = "0.0.4"
 description = "Fail-closed grounding for RAG: every sentence verified against its cited source, or suppressed. Verifier error rates measured and published."
 readme = "README.md"
 license = "Apache-2.0"
@@ -34,10 +34,11 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-# The measured judge was run at temperature 0, and the 1.x SDK no longer
-# accepts that parameter; stay on 0.x so the default run reproduces the
-# published configuration.
-anthropic = ["anthropic>=0.40,<1.0"]
+# Tested at 0.40.0 and 2.8.0 (CI runs both ends). The measured judge runs at
+# temperature 0, which SDK >= 1.0 can only send via extra_body and SDK 2.x only
+# under API version 2023-06-01; the adapter does both (see adapters/anthropic.py).
+# Capped below 3: a new major may change the default API version again.
+anthropic = ["anthropic>=0.40,<3"]
 fetchers = ["httpx>=0.27"]
 pgvector = ["psycopg[binary]>=3.1"]
 # ruff is capped to a minor range: it formats Python embedded in Markdown, so an
@@ -48,7 +49,7 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.16,<0.17", "httpx>=0.27"]
 Homepage = "https://github.com/stephs-repos/bearout"
 Repository = "https://github.com/stephs-repos/bearout"
 Issues = "https://github.com/stephs-repos/bearout/issues"
-Changelog = "https://github.com/stephs-repos/bearout/releases"
+Changelog = "https://github.com/stephs-repos/bearout/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bearout"]

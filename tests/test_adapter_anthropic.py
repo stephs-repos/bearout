@@ -57,6 +57,16 @@ async def call(chat, temperature: float | None = 0.0) -> dict[str, Any]:
     )
 
 
+def sent_temperature(kwargs: dict[str, Any]) -> float | None:
+    """The temperature a create() call carries, wherever the adapter put it.
+
+    SDK >= 1.0 has no ``temperature=`` argument, so the adapter must route it
+    through ``extra_body``; a top-level kwarg would be a TypeError there.
+    """
+    assert "temperature" not in kwargs, "temperature= is a TypeError on SDK >= 1.0"
+    return kwargs.get("extra_body", {}).get("temperature")
+
+
 class TestMeasuredDefault:
     def test_default_model_is_the_measured_judge(self) -> None:
         from bearout.adapters.anthropic import DEFAULT_MODEL, MEASURED_MODEL
@@ -78,7 +88,7 @@ class TestTemperatureForwarding:
     async def test_measured_judge_receives_temperature(self) -> None:
         chat = build()
         await call(chat, temperature=0.0)
-        assert chat._client.messages.calls[0]["temperature"] == 0.0
+        assert sent_temperature(chat._client.messages.calls[0]) == 0.0
 
     @pytest.mark.asyncio
     async def test_newer_models_do_not_receive_temperature(self) -> None:
@@ -86,25 +96,43 @@ class TestTemperatureForwarding:
         # parameters, so forwarding one would break the swappable-judge promise.
         chat = build(model="claude-opus-5")
         await call(chat, temperature=0.0)
-        assert "temperature" not in chat._client.messages.calls[0]
+        assert sent_temperature(chat._client.messages.calls[0]) is None
 
     @pytest.mark.asyncio
     async def test_forwarding_can_be_forced_for_another_older_model(self) -> None:
         chat = build(model="claude-sonnet-4-5", forward_temperature=True)
         await call(chat, temperature=0.0)
-        assert chat._client.messages.calls[0]["temperature"] == 0.0
+        assert sent_temperature(chat._client.messages.calls[0]) == 0.0
 
     @pytest.mark.asyncio
     async def test_forwarding_can_be_disabled_for_the_measured_judge(self) -> None:
         chat = build(forward_temperature=False)
         await call(chat, temperature=0.0)
-        assert "temperature" not in chat._client.messages.calls[0]
+        assert sent_temperature(chat._client.messages.calls[0]) is None
 
     @pytest.mark.asyncio
     async def test_omitted_temperature_is_never_invented(self) -> None:
         chat = build()
         await call(chat, temperature=None)
-        assert "temperature" not in chat._client.messages.calls[0]
+        assert sent_temperature(chat._client.messages.calls[0]) is None
+
+    @pytest.mark.asyncio
+    async def test_temperature_requests_pin_the_sampling_api_version(self) -> None:
+        # SDK 2.x defaults to API version 2026-10-21, which 400s on any
+        # sampling parameter; the measured request must stay on 2023-06-01.
+        from bearout.adapters.anthropic import SAMPLING_API_VERSION
+
+        chat = build()
+        await call(chat, temperature=0.0)
+        headers = chat._client.messages.calls[0]["extra_headers"]
+        assert headers == {"anthropic-version": SAMPLING_API_VERSION}
+        assert SAMPLING_API_VERSION == "2023-06-01"
+
+    @pytest.mark.asyncio
+    async def test_requests_without_temperature_keep_the_sdk_api_version(self) -> None:
+        chat = build(model="claude-opus-5")
+        await call(chat, temperature=0.0)
+        assert "extra_headers" not in chat._client.messages.calls[0]
 
 
 class TestRequestShape:
