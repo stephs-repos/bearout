@@ -34,3 +34,27 @@ jobs:
           uv run ruff format --check .
       - name: Test
         run: uv run pytest -q
+
+  sdk-compat:
+    # tests/test_adapter_anthropic_sdk.py drives the real anthropic SDK and
+    # skips when the extra is absent, so the job above never runs it.  Run it
+    # at both ends of the range pyproject declares for the `anthropic` extra.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        anthropic: ["anthropic==0.40.0", "anthropic>=2,<3"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.11"
+          cache-dependency-glob: "pyproject.toml"
+      - name: Install
+        run: |
+          uv sync --extra dev
+          uv pip install "${{ matrix.anthropic }}"
+      - name: Test
+        # --no-sync: a plain `uv run` would resync and drop the pinned SDK.
+        run: |
+          uv run --no-sync python -c "import anthropic; print('anthropic', anthropic.__version__)"
+          uv run --no-sync pytest -q

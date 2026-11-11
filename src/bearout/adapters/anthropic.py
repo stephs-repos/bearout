@@ -14,6 +14,15 @@ Design notes:
   measured judge predates that change and was run at temperature 0 — so
   the parameter has to actually reach the API for the default
   configuration to reproduce the measurement.
+- A forwarded ``temperature`` travels in ``extra_body`` and pins that one
+  request to API version ``2023-06-01``.  SDK 1.x dropped ``temperature``
+  from ``messages.create()`` (a ``TypeError``), and SDK 2.x defaults to API
+  version ``2026-10-21``, which answers any sampling parameter with a 400.
+  Both routes are the SDK migration guides' prescribed escape hatch, and on
+  SDK 0.x they put exactly the old request on the wire.  Requests without
+  a temperature use the SDK's default API version.
+- Retries and timeouts are the SDK defaults (2 retries, 600 s), which are
+  unchanged from SDK 0.40 through 2.x.
 - ``cache_prefix`` (the sources block) is placed under a prompt-cache
   breakpoint, so the fan-out of per-sentence verifier calls re-reads the
   same sources at cache-read rates instead of re-billing them per call.
@@ -33,6 +42,11 @@ MEASURED_MODEL = "claude-sonnet-4-5-20250929"
 
 # Ship the configuration the published rates actually describe.
 DEFAULT_MODEL = MEASURED_MODEL
+
+# The API version the measurement ran under, and the last one that accepts
+# sampling parameters.  SDK 0.x and 1.x send it by default; SDK 2.x sends
+# ``2026-10-21``, which rejects ``temperature`` with a 400.
+SAMPLING_API_VERSION = "2023-06-01"
 
 
 class AnthropicChat:
@@ -91,7 +105,9 @@ class AnthropicChat:
 
         sampling: dict[str, Any] = {}
         if self._forward_temperature and temperature is not None:
-            sampling["temperature"] = temperature
+            # Not ``temperature=``: SDK >= 1.0 removed it from the signature.
+            sampling["extra_body"] = {"temperature": temperature}
+            sampling["extra_headers"] = {"anthropic-version": SAMPLING_API_VERSION}
 
         response = await self._client.messages.create(
             model=self._model,
